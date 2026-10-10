@@ -86,6 +86,8 @@ const formatCurrency = (amount: number) =>
     maximumFractionDigits: 0,
   }).format(amount)
 
+const currentYear = new Date().getFullYear()
+
 function OverviewPage() {
   const currentBudget = budgetCategories.reduce((sum, item) => sum + item.spent, 0)
   const totalCapacity = budgetCategories.reduce((sum, item) => sum + item.limit, 0)
@@ -110,7 +112,7 @@ function OverviewPage() {
               <p className="eyebrow">PROFIT</p>
               <h3>Monthly Profit</h3>
             </div>
-            <button type="button" className="secondary-button">This year</button>
+            <button type="button" className="secondary-button">{currentYear}</button>
           </div>
 
           <div className="chart" aria-label="Monthly spending trend">
@@ -135,22 +137,22 @@ function OverviewPage() {
 
           <div className="account-card accent">
             <div className="account-meta">
-              <span>Primary</span>
-              <strong>•••• 4829</strong>
+              <span>Budget note</span>
+              <strong>New</strong>
             </div>
             <div className="account-balance">
-              <small>Available</small>
+              <small>Focus</small>
               <strong>{formatCurrency(18240)}</strong>
             </div>
           </div>
 
           <div className="account-card muted">
             <div className="account-meta">
-              <span>Savings</span>
-              <strong>•••• 2198</strong>
+              <span>Goal check</span>
+              <strong>On track</strong>
             </div>
             <div className="account-balance">
-              <small>Growth</small>
+              <small>Saved this month</small>
               <strong>{formatCurrency(14680)}</strong>
             </div>
           </div>
@@ -193,7 +195,7 @@ function OverviewPage() {
               <p className="eyebrow">CASH-IN</p>
               <h3>Transactions</h3>
             </div>
-            <button type="button" className="secondary-button">View all</button>
+            <span className="meta-pill">Last 7 days</span>
           </div>
 
           <ul className="transaction-list">
