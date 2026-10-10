@@ -113,6 +113,50 @@ p {
   letter-spacing: -0.05em;
 }
 
+.member-controls {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+}
+
+.member-select-label,
+.add-member-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: #cbd5e1;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.member-select-label select,
+.add-member-form input {
+  min-width: 180px;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.9);
+  color: #e2e8f0;
+  font: inherit;
+}
+
+.add-member-form {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.member-error {
+  flex-basis: 100%;
+  color: #fda4af;
+  font-size: 0.9rem;
+}
+
 .summary-grid,
 .card-grid,
 .stats-grid {
@@ -405,6 +449,41 @@ p {
   gap: 12px;
 }
 
+.total-savings-card {
+  justify-content: center;
+  min-height: 168px;
+  background:
+    radial-gradient(ellipse at top right, rgba(45, 212, 191, 0.2), transparent 65%),
+    linear-gradient(145deg, rgba(15, 45, 57, 0.96), rgba(15, 23, 42, 0.92));
+  border-color: rgba(45, 212, 191, 0.42);
+  box-shadow: 0 16px 36px rgba(20, 184, 166, 0.12);
+}
+
+.total-savings-card .mini-header {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.total-savings-card .mini-header span {
+  color: #99f6e4;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.total-savings-card .mini-header strong {
+  color: #f0fdfa;
+  font-size: clamp(2rem, 3vw, 2.75rem);
+  letter-spacing: -0.06em;
+  line-height: 1;
+}
+
+.total-savings-card small {
+  color: #99f6e4;
+}
+
 .mini-header {
   align-items: baseline;
 }
@@ -434,6 +513,19 @@ p {
   .page-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .member-controls {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .member-select-label {
+    flex: 1;
+  }
+
+  .member-select-label select {
+    width: 100%;
   }
 
   .main-nav {
@@ -473,6 +565,16 @@ p {
 
   .primary-button,
   .secondary-button {
+    width: 100%;
+  }
+
+  .member-controls,
+  .add-member-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .add-member-form input {
     width: 100%;
   }
 }

@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import './App.css'
 
 type TabKey = 'overview' | 'savings' | 'loans' | 'profits' | 'data'
+type Member = { name: string; initialSavings: number }
 
 const summaryCards = [
-  { label: 'Available funds', value: '$32,480', delta: '+$1,240', tone: 'positive' },
-  { label: 'Total Savings', value: '$8,420', delta: '+8.4%', tone: 'positive' },
-  { label: 'Loans Proceeds', value: '$5,420', delta: '-3.1%', tone: 'negative' },
+  { label: 'Available funds', value: '₱32,480', delta: '+₱1,240', tone: 'positive' },
+  { label: 'Total Savings', value: '₱8,420', delta: '+8.4%', tone: 'positive' },
+  { label: 'Loans Proceeds', value: '₱5,420', delta: '-3.1%', tone: 'negative' },
   { label: 'Total Profits', value: '36%', delta: '+4.6 pts', tone: 'positive' },
 ]
 
@@ -27,40 +28,41 @@ const budgetCategories = [
 ]
 
 const transactions = [
-  { merchant: 'Northwind Payroll', type: 'Income', amount: '+$2,950', date: 'Today', tone: 'positive' },
-  { merchant: 'Fresh Market', type: 'Groceries', amount: '-$148', date: 'Yesterday', tone: 'negative' },
-  { merchant: 'City Transport', type: 'Transit', amount: '-$64', date: 'Mon', tone: 'negative' },
-  { merchant: 'Apex Studio', type: 'Subscription', amount: '-$29', date: 'Sun', tone: 'negative' },
+  { merchant: 'Northwind Payroll', type: 'Income', amount: '+₱2,950', date: 'Today', tone: 'positive' },
+  { merchant: 'Fresh Market', type: 'Groceries', amount: '-₱148', date: 'Yesterday', tone: 'negative' },
+  { merchant: 'City Transport', type: 'Transit', amount: '-₱64', date: 'Mon', tone: 'negative' },
+  { merchant: 'Apex Studio', type: 'Subscription', amount: '-₱29', date: 'Sun', tone: 'negative' },
 ]
 
 const upcomingBills = [
-  { name: 'Rent', due: 'Due in 3 days', amount: '$1,520' },
-  { name: 'Utilities', due: 'Due in 6 days', amount: '$210' },
-  { name: 'Insurance', due: 'Due in 11 days', amount: '$180' },
+  { name: 'Rent', due: 'Due in 3 days', amount: '₱1,520' },
+  { name: 'Utilities', due: 'Due in 6 days', amount: '₱210' },
+  { name: 'Insurance', due: 'Due in 11 days', amount: '₱180' },
 ]
 
 const goals = [
-  { name: 'Emergency fund', value: '$8,200', target: '$10,000', progress: 82 },
-  { name: 'Vacation', value: '$2,640', target: '$5,000', progress: 53 },
+  { name: 'Emergency fund', value: '₱8,200', target: '₱10,000', progress: 82 },
+  { name: 'Vacation', value: '₱2,640', target: '₱5,000', progress: 53 },
 ]
 
+const homeDownPaymentTarget = 30000
+
 const savingsPlans = [
-  { name: 'Emergency fund', value: '$8,200', target: '$10,000', rate: 82 },
-  { name: 'Home down payment', value: '$15,600', target: '$30,000', rate: 52 },
-  { name: 'Travel reserve', value: '$2,640', target: '$5,000', rate: 53 },
+  { name: 'Home down payment', value: '₱15,600', target: '₱30,000', rate: 52 },
+  { name: 'Travel reserve', value: '₱2,640', target: '₱5,000', rate: 53 },
 ]
 
 const loanOverview = [
-  { name: 'Mortgage', balance: '$184,500', rate: '4.2%', payment: '$1,280' },
-  { name: 'Car loan', balance: '$12,400', rate: '3.6%', payment: '$410' },
-  { name: 'Student loan', balance: '$8,200', rate: '2.9%', payment: '$220' },
+  { name: 'Mortgage', balance: '₱184,500', rate: '4.2%', payment: '₱1,280' },
+  { name: 'Car loan', balance: '₱12,400', rate: '3.6%', payment: '₱410' },
+  { name: 'Student loan', balance: '₱8,200', rate: '2.9%', payment: '₱220' },
 ]
 
 const profitsData = [
-  { label: 'Net profit', value: '$11,240', tone: 'positive' },
+  { label: 'Net profit', value: '₱11,240', tone: 'positive' },
   { label: 'YTD margin', value: '23.8%', tone: 'positive' },
-  { label: 'Capital gains', value: '$2,960', tone: 'positive' },
-  { label: 'Operating costs', value: '$7,540', tone: 'negative' },
+  { label: 'Capital gains', value: '₱2,960', tone: 'positive' },
+  { label: 'Operating costs', value: '₱7,540', tone: 'negative' },
 ]
 
 const dataBreakdown = [
@@ -80,9 +82,9 @@ const tabs: Array<{ id: TabKey; label: string }> = [
 ]
 
 const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat('en-US', {
+  new Intl.NumberFormat('en-PH', {
     style: 'currency',
-    currency: 'USD',
+    currency: 'PHP',
     maximumFractionDigits: 0,
   }).format(amount)
 
@@ -256,7 +258,51 @@ function OverviewPage() {
   )
 }
 
-function SavingsPage() {
+type SavingsPageProps = {
+  members: Member[]
+  selectedMember: string
+  onMemberChange: (member: string) => void
+  onAddMember: (member: Member) => void
+}
+
+function SavingsPage({ members, selectedMember, onMemberChange, onAddMember }: SavingsPageProps) {
+  const [isAddingMember, setIsAddingMember] = useState(false)
+  const [memberName, setMemberName] = useState('')
+  const [initialSavings, setInitialSavings] = useState('')
+  const [memberError, setMemberError] = useState('')
+
+  const handleAddMember = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const name = memberName.trim()
+    const savings = Number(initialSavings)
+
+    if (!name) {
+      setMemberError('Enter a member name.')
+      return
+    }
+
+    if (name.toLowerCase() === 'all' || members.some((member) => member.name.toLowerCase() === name.toLowerCase())) {
+      setMemberError('Choose a unique member name other than All.')
+      return
+    }
+
+    if (initialSavings === '' || !Number.isFinite(savings) || savings < 0) {
+      setMemberError('Enter an initial savings amount of zero or more.')
+      return
+    }
+
+    onAddMember({ name, initialSavings: savings })
+    setMemberName('')
+    setInitialSavings('')
+    setMemberError('')
+    setIsAddingMember(false)
+  }
+
+  const displayedInitialSavings = members
+    .filter((member) => selectedMember === 'all' || member.name === selectedMember)
+    .reduce((total, member) => total + member.initialSavings, 0)
+  const totalSavings = members.reduce((total, member) => total + member.initialSavings, 0)
+
   return (
     <main className="page-view">
       <section className="page-header">
@@ -264,17 +310,96 @@ function SavingsPage() {
           <p className="eyebrow">Savings</p>
           <h2>Growth tracker</h2>
         </div>
+        <div className="member-controls">
+          <label className="member-select-label">
+            Member
+            <select
+              value={selectedMember}
+              onChange={(event) => onMemberChange(event.target.value)}
+            >
+              <option value="all">All</option>
+              {members.map((member) => (
+                <option key={member.name} value={member.name}>{member.name}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="primary-button"
+            onClick={() => {
+              setIsAddingMember((isAdding) => !isAdding)
+              setMemberError('')
+            }}
+          >
+            Add members
+          </button>
+        </div>
       </section>
 
+      {isAddingMember && (
+        <form className="add-member-form" noValidate onSubmit={handleAddMember}>
+          <label>
+            Member name
+            <input
+              id="new-member-name"
+              value={memberName}
+              onChange={(event) => {
+                setMemberName(event.target.value)
+                setMemberError('')
+              }}
+              placeholder="Enter a name"
+              autoFocus
+            />
+          </label>
+          <label>
+            Initial savings (PHP)
+            <input
+              id="initial-savings"
+              type="number"
+              min="0"
+              step="any"
+              required
+              value={initialSavings}
+              onChange={(event) => {
+                setInitialSavings(event.target.value)
+                setMemberError('')
+              }}
+              placeholder="0"
+            />
+          </label>
+          <button type="submit" className="secondary-button">Add member</button>
+          <button type="button" className="secondary-button" onClick={() => setIsAddingMember(false)}>
+            Cancel
+          </button>
+          {memberError && <p className="member-error" role="alert">{memberError}</p>}
+        </form>
+      )}
+
       <section className="card-grid">
+        <article className="panel stat-panel total-savings-card">
+          <div className="mini-header">
+            <span>Total savings</span>
+            <strong>{formatCurrency(totalSavings)}</strong>
+          </div>
+          <small>Combined savings across all members</small>
+        </article>
         {savingsPlans.map((goal) => (
           <article key={goal.name} className="panel stat-panel">
             <div className="mini-header">
-              <span>{goal.name}</span>
-              <strong>{goal.value}</strong>
+              <span>{goal.name === 'Home down payment' ? 'Member Savings' : goal.name}</span>
+              <strong>
+                {goal.name === 'Home down payment' ? formatCurrency(displayedInitialSavings) : goal.value}
+              </strong>
             </div>
             <div className="progress-bar" aria-label={`${goal.name} progress`}>
-              <span className="progress-fill teal" style={{ width: `${goal.rate}%` }} />
+              <span
+                className="progress-fill teal"
+                style={{
+                  width: `${goal.name === 'Home down payment'
+                    ? Math.min((displayedInitialSavings / homeDownPaymentTarget) * 100, 100)
+                    : goal.rate}%`,
+                }}
+              />
             </div>
             <small>{goal.target} target</small>
           </article>
@@ -291,15 +416,15 @@ function SavingsPage() {
         <div className="stats-grid">
           <div className="stat-box">
             <span>Cash savings</span>
-            <strong>$9,840</strong>
+            <strong>₱9,840</strong>
           </div>
           <div className="stat-box">
             <span>Investments</span>
-            <strong>$14,200</strong>
+            <strong>₱14,200</strong>
           </div>
           <div className="stat-box">
             <span>Auto-save</span>
-            <strong>$640 / month</strong>
+            <strong>₱640 / month</strong>
           </div>
         </div>
       </section>
@@ -347,11 +472,11 @@ function LoansPage() {
         <div className="stats-grid">
           <div className="stat-box">
             <span>Total debt</span>
-            <strong>$205,100</strong>
+            <strong>₱205,100</strong>
           </div>
           <div className="stat-box">
             <span>Interest saved</span>
-            <strong>$4,820</strong>
+            <strong>₱4,820</strong>
           </div>
           <div className="stat-box">
             <span>Payoff date</span>
@@ -393,15 +518,15 @@ function ProfitsPage() {
         <div className="stats-grid">
           <div className="stat-box">
             <span>Salary</span>
-            <strong>$42,400</strong>
+            <strong>₱42,400</strong>
           </div>
           <div className="stat-box">
             <span>Investments</span>
-            <strong>$13,600</strong>
+            <strong>₱13,600</strong>
           </div>
           <div className="stat-box">
             <span>Side income</span>
-            <strong>$7,900</strong>
+            <strong>₱7,900</strong>
           </div>
         </div>
       </section>
@@ -462,11 +587,25 @@ function DataPage() {
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
+  const [members, setMembers] = useState<Member[]>([])
+  const [selectedMember, setSelectedMember] = useState('all')
+
+  const addMember = (member: Member) => {
+    setMembers((currentMembers) => [...currentMembers, member])
+    setSelectedMember(member.name)
+  }
 
   const renderPage = () => {
     switch (activeTab) {
       case 'savings':
-        return <SavingsPage />
+        return (
+          <SavingsPage
+            members={members}
+            selectedMember={selectedMember}
+            onMemberChange={setSelectedMember}
+            onAddMember={addMember}
+          />
+        )
       case 'loans':
         return <LoansPage />
       case 'profits':
