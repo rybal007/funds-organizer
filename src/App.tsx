@@ -107,8 +107,8 @@ function OverviewPage() {
         <article className="panel chart-panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Cash flow</p>
-              <h3>Monthly Receivable</h3>
+              <p className="eyebrow">PROFIT</p>
+              <h3>Monthly Profit</h3>
             </div>
             <button type="button" className="secondary-button">This year</button>
           </div>
@@ -128,8 +128,8 @@ function OverviewPage() {
         <article className="panel snapshot-panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Accounts</p>
-              <h3>Quick snapshot</h3>
+              <p className="eyebrow">Announcements</p>
+              <h3>New Update</h3>
             </div>
           </div>
 
@@ -161,8 +161,8 @@ function OverviewPage() {
         <article className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Budgets</p>
-              <h3>Spending plan</h3>
+              <p className="eyebrow">Recent</p>
+              <h3>Transactions</h3>
             </div>
             <span className="meta-pill">{budgetUsage}% used</span>
           </div>
@@ -190,7 +190,7 @@ function OverviewPage() {
         <article className="panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Recent</p>
+              <p className="eyebrow">CASH-IN</p>
               <h3>Transactions</h3>
             </div>
             <button type="button" className="secondary-button">View all</button>
@@ -214,7 +214,7 @@ function OverviewPage() {
         <article className="panel side-panel">
           <div className="panel-header">
             <div>
-              <p className="eyebrow">Planning</p>
+              <p className="eyebrow">CASH-OUT</p>
               <h3>Upcoming</h3>
             </div>
           </div>
