@@ -121,7 +121,8 @@ p {
 
 .member-select-label,
 .add-member-form label,
-.add-savings-form label {
+.add-savings-form label,
+.pull-out-form label {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -133,7 +134,9 @@ p {
 .member-select-label select,
 .add-member-form input,
 .add-savings-form input,
-.add-savings-form select {
+.add-savings-form select,
+.pull-out-form input,
+.pull-out-form select {
   min-width: 180px;
   padding: 0.9rem 1rem;
   border: 1px solid rgba(148, 163, 184, 0.22);
@@ -154,18 +157,61 @@ p {
   background: rgba(15, 23, 42, 0.6);
 }
 
-.add-savings-card h3 {
-  font-size: 1.3rem;
-  letter-spacing: -0.04em;
-}
-
 .add-savings-form {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-top: 8px;
+}
+
+.member-savings-card .add-savings-form input,
+.member-savings-card .add-savings-form select {
+  width: 100%;
+  min-width: 0;
+}
+
+.pull-out-card h3 {
+  font-size: 1.3rem;
+  letter-spacing: -0.04em;
+}
+
+.pull-out-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.pull-out-form input,
+.pull-out-form select {
+  width: 100%;
+  min-width: 0;
+}
+
+.withdrawal-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.72);
+  color: #cbd5e1;
+  font-size: 0.85rem;
+}
+
+.withdrawal-summary strong {
+  color: #f0fdfa;
+}
+
+.withdrawal-summary small {
+  color: #94a3b8;
 }
 
 .add-savings-form .primary-button {
+  width: 100%;
+}
+
+.pull-out-form .secondary-button {
   width: 100%;
 }
 
@@ -610,7 +656,9 @@ p {
   }
 
   .add-savings-form input,
-  .add-savings-form select {
+  .add-savings-form select,
+  .pull-out-form input,
+  .pull-out-form select {
     width: 100%;
   }
 }

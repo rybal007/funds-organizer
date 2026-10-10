@@ -3,14 +3,18 @@ import './App.css'
 
 type TabKey = 'overview' | 'savings' | 'loans' | 'profits' | 'data'
 type SavingsContribution = { amount: number; date: string }
+type SavingsWithdrawal = { amount: number; date: string; reason: string }
 type Member = {
   name: string
   initialSavings: number
   initialSavingsDate: string
   contributions: SavingsContribution[]
+  withdrawals: SavingsWithdrawal[]
 }
 const getMemberSavings = (member: Member) =>
-  member.initialSavings + member.contributions.reduce((total, contribution) => total + contribution.amount, 0)
+  member.initialSavings
+  + member.contributions.reduce((total, contribution) => total + contribution.amount, 0)
+  - member.withdrawals.reduce((total, withdrawal) => total + withdrawal.amount, 0)
 
 const summaryCards = [
   { label: 'Available funds', value: '₱32,480', delta: '+₱1,240', tone: 'positive' },
@@ -281,17 +285,38 @@ type SavingsPageProps = {
   onMemberChange: (member: string) => void
   onAddMember: (member: Member) => void
   onAddSavings: (memberName: string, amount: number, date: string) => void
+  onPullOutSavings: (memberName: string, amount: number, date: string, reason: string) => void
 }
 
-function SavingsPage({ members, selectedMember, onMemberChange, onAddMember, onAddSavings }: SavingsPageProps) {
+function SavingsPage({
+  members,
+  selectedMember,
+  onMemberChange,
+  onAddMember,
+  onAddSavings,
+  onPullOutSavings,
+}: SavingsPageProps) {
   const [isAddingMember, setIsAddingMember] = useState(false)
   const [memberName, setMemberName] = useState('')
   const [initialSavings, setInitialSavings] = useState('')
+  const [initialSavingsDate, setInitialSavingsDate] = useState(getLocalDate)
   const [memberError, setMemberError] = useState('')
   const [savingsMember, setSavingsMember] = useState('')
   const [savingsAmount, setSavingsAmount] = useState('')
   const [savingsDate, setSavingsDate] = useState(getLocalDate)
   const [savingsError, setSavingsError] = useState('')
+  const [withdrawalMember, setWithdrawalMember] = useState('')
+  const [withdrawalAmount, setWithdrawalAmount] = useState('')
+  const [withdrawalDate, setWithdrawalDate] = useState(getLocalDate)
+  const [withdrawalReason, setWithdrawalReason] = useState('')
+  const [withdrawalError, setWithdrawalError] = useState('')
+  const selectedWithdrawalMember = members.find((member) =>
+    member.name === (withdrawalMember || (selectedMember !== 'all' ? selectedMember : '')),
+  )
+  const parsedWithdrawalAmount = Number(withdrawalAmount)
+  const withdrawalFee = Number.isFinite(parsedWithdrawalAmount) && parsedWithdrawalAmount > 0
+    ? parsedWithdrawalAmount * 0.1
+    : 0
 
   const handleAddMember = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -313,14 +338,21 @@ function SavingsPage({ members, selectedMember, onMemberChange, onAddMember, onA
       return
     }
 
+    if (!initialSavingsDate) {
+      setMemberError('Choose a date for the initial savings.')
+      return
+    }
+
     onAddMember({
       name,
       initialSavings: savings,
-      initialSavingsDate: getLocalDate(),
+      initialSavingsDate,
       contributions: [],
+      withdrawals: [],
     })
     setMemberName('')
     setInitialSavings('')
+    setInitialSavingsDate(getLocalDate())
     setMemberError('')
     setIsAddingMember(false)
   }
@@ -351,11 +383,52 @@ function SavingsPage({ members, selectedMember, onMemberChange, onAddMember, onA
     setSavingsError('')
   }
 
+  const handlePullOutSavings = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const memberName = withdrawalMember || (selectedMember !== 'all' ? selectedMember : '')
+    const amount = Number(withdrawalAmount)
+    const member = members.find((entry) => entry.name === memberName)
+
+    if (!member) {
+      setWithdrawalError('Select a member to pull savings from.')
+      return
+    }
+
+    if (withdrawalAmount === '' || !Number.isFinite(amount) || amount <= 0) {
+      setWithdrawalError('Enter a pull-out amount greater than zero.')
+      return
+    }
+
+    if (amount > getMemberSavings(member)) {
+      setWithdrawalError('The pull-out amount cannot exceed this member’s savings.')
+      return
+    }
+
+    if (!withdrawalDate || !withdrawalReason.trim()) {
+      setWithdrawalError('Enter a date and reason for the pull-out.')
+      return
+    }
+
+    onPullOutSavings(memberName, amount, withdrawalDate, withdrawalReason.trim())
+    setWithdrawalAmount('')
+    setWithdrawalDate(getLocalDate())
+    setWithdrawalReason('')
+    setWithdrawalError('')
+  }
+
   const displayedInitialSavings = members
     .filter((member) => selectedMember === 'all' || member.name === selectedMember)
     .reduce((total, member) => total + getMemberSavings(member), 0)
   const totalSavings = members.reduce((total, member) => total + getMemberSavings(member), 0)
-  const savingsHistory = members
+  const savingsHistory: Array<{
+    id: string
+    member: string
+    type: string
+    amount: number
+    date: string
+    reason?: string
+    fee?: number
+  }> = members
     .filter((member) => selectedMember === 'all' || member.name === selectedMember)
     .flatMap((member) => [
       {
@@ -371,6 +444,15 @@ function SavingsPage({ members, selectedMember, onMemberChange, onAddMember, onA
         type: 'Added savings',
         amount: contribution.amount,
         date: contribution.date,
+      })),
+      ...member.withdrawals.map((withdrawal, index) => ({
+        id: `${member.name}-withdrawal-${index}`,
+        member: member.name,
+        type: 'Pull out savings',
+        amount: -withdrawal.amount,
+        date: withdrawal.date,
+        reason: withdrawal.reason,
+        fee: withdrawal.amount * 0.1,
       })),
     ])
     .sort((first, second) => second.date.localeCompare(first.date))
@@ -439,6 +521,19 @@ function SavingsPage({ members, selectedMember, onMemberChange, onAddMember, onA
               placeholder="0"
             />
           </label>
+          <label>
+            Initial savings date
+            <input
+              id="initial-savings-date"
+              type="date"
+              required
+              value={initialSavingsDate}
+              onChange={(event) => {
+                setInitialSavingsDate(event.target.value)
+                setMemberError('')
+              }}
+            />
+          </label>
           <button type="submit" className="secondary-button">Add member</button>
           <button type="button" className="secondary-button" onClick={() => setIsAddingMember(false)}>
             Cancel
@@ -456,7 +551,10 @@ function SavingsPage({ members, selectedMember, onMemberChange, onAddMember, onA
           <small>Combined savings across all members</small>
         </article>
         {savingsPlans.map((goal) => (
-          <article key={goal.name} className="panel stat-panel">
+          <article
+            key={goal.name}
+            className={`panel stat-panel ${goal.name === 'Home down payment' ? 'member-savings-card' : ''}`}
+          >
             <div className="mini-header">
               <span>{goal.name === 'Home down payment' ? 'Member Savings' : goal.name}</span>
               <strong>
@@ -474,21 +572,72 @@ function SavingsPage({ members, selectedMember, onMemberChange, onAddMember, onA
               />
             </div>
             <small>{goal.target} target</small>
+            {goal.name === 'Home down payment' && (
+              <div className="member-savings-actions">
+                <form className="add-savings-form" noValidate onSubmit={handleAddSavings}>
+                <label>
+                  Member
+                  <select
+                    value={savingsMember || (selectedMember !== 'all' ? selectedMember : '')}
+                    onChange={(event) => {
+                      setSavingsMember(event.target.value)
+                      setSavingsError('')
+                    }}
+                  >
+                    <option value="">Select a member</option>
+                    {members.map((member) => (
+                      <option key={member.name} value={member.name}>{member.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Amount (PHP)
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={savingsAmount}
+                    onChange={(event) => {
+                      setSavingsAmount(event.target.value)
+                      setSavingsError('')
+                    }}
+                    placeholder="0"
+                  />
+                </label>
+                <label>
+                  Date
+                  <input
+                    type="date"
+                    required
+                    value={savingsDate}
+                    onChange={(event) => {
+                      setSavingsDate(event.target.value)
+                      setSavingsError('')
+                    }}
+                  />
+                </label>
+                <button type="submit" className="primary-button" disabled={members.length === 0}>
+                  Add savings
+                </button>
+                {savingsError && <p className="member-error" role="alert">{savingsError}</p>}
+                </form>
+              </div>
+            )}
           </article>
         ))}
-        <article className="panel stat-panel add-savings-card">
+        <article className="panel stat-panel pull-out-card">
           <div>
-            <p className="eyebrow">Savings</p>
-            <h3>Add savings</h3>
+            <p className="eyebrow">Withdrawal</p>
+            <h3>Pull out savings</h3>
           </div>
-          <form className="add-savings-form" noValidate onSubmit={handleAddSavings}>
+          <form className="pull-out-form" noValidate onSubmit={handlePullOutSavings}>
             <label>
               Member
               <select
-                value={savingsMember || (selectedMember !== 'all' ? selectedMember : '')}
+                value={withdrawalMember || (selectedMember !== 'all' ? selectedMember : '')}
                 onChange={(event) => {
-                  setSavingsMember(event.target.value)
-                  setSavingsError('')
+                  setWithdrawalMember(event.target.value)
+                  setWithdrawalError('')
                 }}
               >
                 <option value="">Select a member</option>
@@ -503,10 +652,10 @@ function SavingsPage({ members, selectedMember, onMemberChange, onAddMember, onA
                 type="number"
                 min="0"
                 step="any"
-                value={savingsAmount}
+                value={withdrawalAmount}
                 onChange={(event) => {
-                  setSavingsAmount(event.target.value)
-                  setSavingsError('')
+                  setWithdrawalAmount(event.target.value)
+                  setWithdrawalError('')
                 }}
                 placeholder="0"
               />
@@ -516,17 +665,38 @@ function SavingsPage({ members, selectedMember, onMemberChange, onAddMember, onA
               <input
                 type="date"
                 required
-                value={savingsDate}
+                value={withdrawalDate}
                 onChange={(event) => {
-                  setSavingsDate(event.target.value)
-                  setSavingsError('')
+                  setWithdrawalDate(event.target.value)
+                  setWithdrawalError('')
                 }}
               />
             </label>
-            <button type="submit" className="primary-button" disabled={members.length === 0}>
-              Add savings
+            <label>
+              Reason
+              <input
+                type="text"
+                value={withdrawalReason}
+                onChange={(event) => {
+                  setWithdrawalReason(event.target.value)
+                  setWithdrawalError('')
+                }}
+                placeholder="Reason for pull-out"
+              />
+            </label>
+            <div className="withdrawal-summary">
+              <span>10% deduction: {formatCurrency(withdrawalFee)}</span>
+              <strong>
+                Payout: {formatCurrency(Math.max(parsedWithdrawalAmount - withdrawalFee, 0))}
+              </strong>
+              {selectedWithdrawalMember && (
+                <small>Available: {formatCurrency(getMemberSavings(selectedWithdrawalMember))}</small>
+              )}
+            </div>
+            <button type="submit" className="secondary-button" disabled={members.length === 0}>
+              Pull out savings
             </button>
-            {savingsError && <p className="member-error" role="alert">{savingsError}</p>}
+            {withdrawalError && <p className="member-error" role="alert">{withdrawalError}</p>}
           </form>
         </article>
       </section>
@@ -544,9 +714,15 @@ function SavingsPage({ members, selectedMember, onMemberChange, onAddMember, onA
               <li key={transaction.id} className="transaction-item">
                 <div>
                   <strong>{transaction.type} · {transaction.member}</strong>
-                  <small>{formatDate(transaction.date)}</small>
+                  <small>
+                    {formatDate(transaction.date)}
+                    {transaction.reason && ` · ${transaction.reason}`}
+                    {transaction.fee !== undefined && ` · 10% fee: ${formatCurrency(transaction.fee)}`}
+                  </small>
                 </div>
-                <span className="positive">+{formatCurrency(transaction.amount)}</span>
+                <span className={transaction.amount < 0 ? 'negative' : 'positive'}>
+                  {transaction.amount < 0 ? '-' : '+'}{formatCurrency(Math.abs(transaction.amount))}
+                </span>
               </li>
             ))}
           </ul>
@@ -732,6 +908,16 @@ function App() {
     )
   }
 
+  const pullOutSavings = (memberName: string, amount: number, date: string, reason: string) => {
+    setMembers((currentMembers) =>
+      currentMembers.map((member) =>
+        member.name === memberName
+          ? { ...member, withdrawals: [...member.withdrawals, { amount, date, reason }] }
+          : member,
+      ),
+    )
+  }
+
   const renderPage = () => {
     switch (activeTab) {
       case 'savings':
@@ -742,6 +928,7 @@ function App() {
             onMemberChange={setSelectedMember}
             onAddMember={addMember}
             onAddSavings={addSavings}
+            onPullOutSavings={pullOutSavings}
           />
         )
       case 'loans':
