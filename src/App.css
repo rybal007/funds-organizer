@@ -120,7 +120,8 @@ p {
 }
 
 .member-select-label,
-.add-member-form label {
+.add-member-form label,
+.add-savings-form label {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -130,7 +131,9 @@ p {
 }
 
 .member-select-label select,
-.add-member-form input {
+.add-member-form input,
+.add-savings-form input,
+.add-savings-form select {
   min-width: 180px;
   padding: 0.9rem 1rem;
   border: 1px solid rgba(148, 163, 184, 0.22);
@@ -149,6 +152,26 @@ p {
   border: 1px solid rgba(148, 163, 184, 0.15);
   border-radius: 18px;
   background: rgba(15, 23, 42, 0.6);
+}
+
+.add-savings-card h3 {
+  font-size: 1.3rem;
+  letter-spacing: -0.04em;
+}
+
+.add-savings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.add-savings-form .primary-button {
+  width: 100%;
+}
+
+.add-savings-form .primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .member-error {
@@ -372,6 +395,14 @@ p {
   margin: 0;
 }
 
+.savings-history-list {
+  gap: 0;
+}
+
+.savings-history-empty {
+  color: #94a3b8;
+}
+
 .transaction-item,
 .bill-item {
   padding: 12px 0;
@@ -575,6 +606,11 @@ p {
   }
 
   .add-member-form input {
+    width: 100%;
+  }
+
+  .add-savings-form input,
+  .add-savings-form select {
     width: 100%;
   }
 }

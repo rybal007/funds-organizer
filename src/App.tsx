@@ -2,7 +2,15 @@ import { useState, type FormEvent } from 'react'
 import './App.css'
 
 type TabKey = 'overview' | 'savings' | 'loans' | 'profits' | 'data'
-type Member = { name: string; initialSavings: number }
+type SavingsContribution = { amount: number; date: string }
+type Member = {
+  name: string
+  initialSavings: number
+  initialSavingsDate: string
+  contributions: SavingsContribution[]
+}
+const getMemberSavings = (member: Member) =>
+  member.initialSavings + member.contributions.reduce((total, contribution) => total + contribution.amount, 0)
 
 const summaryCards = [
   { label: 'Available funds', value: '₱32,480', delta: '+₱1,240', tone: 'positive' },
@@ -49,7 +57,6 @@ const homeDownPaymentTarget = 30000
 
 const savingsPlans = [
   { name: 'Home down payment', value: '₱15,600', target: '₱30,000', rate: 52 },
-  { name: 'Travel reserve', value: '₱2,640', target: '₱5,000', rate: 53 },
 ]
 
 const loanOverview = [
@@ -88,9 +95,19 @@ const formatCurrency = (amount: number) =>
     maximumFractionDigits: 0,
   }).format(amount)
 
+const getLocalDate = () => {
+  const date = new Date()
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset())
+  return date.toISOString().slice(0, 10)
+}
+
+const formatDate = (date: string) =>
+  new Intl.DateTimeFormat('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
+    .format(new Date(`${date}T00:00:00`))
+
 const currentYear = new Date().getFullYear()
 
-function OverviewPage() {
+function OverviewPage({ totalSavings }: { totalSavings: number }) {
   const currentBudget = budgetCategories.reduce((sum, item) => sum + item.spent, 0)
   const totalCapacity = budgetCategories.reduce((sum, item) => sum + item.limit, 0)
   const budgetUsage = Math.round((currentBudget / totalCapacity) * 100)
@@ -101,7 +118,7 @@ function OverviewPage() {
         {summaryCards.map((card) => (
           <article key={card.label} className="summary-card">
             <p>{card.label}</p>
-            <h2>{card.value}</h2>
+            <h2>{card.label === 'Total Savings' ? formatCurrency(totalSavings) : card.value}</h2>
             <span className={card.tone}>{card.delta}</span>
           </article>
         ))}
@@ -263,13 +280,18 @@ type SavingsPageProps = {
   selectedMember: string
   onMemberChange: (member: string) => void
   onAddMember: (member: Member) => void
+  onAddSavings: (memberName: string, amount: number, date: string) => void
 }
 
-function SavingsPage({ members, selectedMember, onMemberChange, onAddMember }: SavingsPageProps) {
+function SavingsPage({ members, selectedMember, onMemberChange, onAddMember, onAddSavings }: SavingsPageProps) {
   const [isAddingMember, setIsAddingMember] = useState(false)
   const [memberName, setMemberName] = useState('')
   const [initialSavings, setInitialSavings] = useState('')
   const [memberError, setMemberError] = useState('')
+  const [savingsMember, setSavingsMember] = useState('')
+  const [savingsAmount, setSavingsAmount] = useState('')
+  const [savingsDate, setSavingsDate] = useState(getLocalDate)
+  const [savingsError, setSavingsError] = useState('')
 
   const handleAddMember = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -291,17 +313,67 @@ function SavingsPage({ members, selectedMember, onMemberChange, onAddMember }: S
       return
     }
 
-    onAddMember({ name, initialSavings: savings })
+    onAddMember({
+      name,
+      initialSavings: savings,
+      initialSavingsDate: getLocalDate(),
+      contributions: [],
+    })
     setMemberName('')
     setInitialSavings('')
     setMemberError('')
     setIsAddingMember(false)
   }
 
+  const handleAddSavings = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const memberName = savingsMember || (selectedMember !== 'all' ? selectedMember : '')
+    const amount = Number(savingsAmount)
+
+    if (!members.some((member) => member.name === memberName)) {
+      setSavingsError('Select a member to add savings to.')
+      return
+    }
+
+    if (savingsAmount === '' || !Number.isFinite(amount) || amount <= 0) {
+      setSavingsError('Enter a savings amount greater than zero.')
+      return
+    }
+
+    if (!savingsDate) {
+      setSavingsError('Choose a date for this savings entry.')
+      return
+    }
+
+    onAddSavings(memberName, amount, savingsDate)
+    setSavingsAmount('')
+    setSavingsDate(getLocalDate())
+    setSavingsError('')
+  }
+
   const displayedInitialSavings = members
     .filter((member) => selectedMember === 'all' || member.name === selectedMember)
-    .reduce((total, member) => total + member.initialSavings, 0)
-  const totalSavings = members.reduce((total, member) => total + member.initialSavings, 0)
+    .reduce((total, member) => total + getMemberSavings(member), 0)
+  const totalSavings = members.reduce((total, member) => total + getMemberSavings(member), 0)
+  const savingsHistory = members
+    .filter((member) => selectedMember === 'all' || member.name === selectedMember)
+    .flatMap((member) => [
+      {
+        id: `${member.name}-initial`,
+        member: member.name,
+        type: 'Initial savings',
+        amount: member.initialSavings,
+        date: member.initialSavingsDate,
+      },
+      ...member.contributions.map((contribution, index) => ({
+        id: `${member.name}-contribution-${index}`,
+        member: member.name,
+        type: 'Added savings',
+        amount: contribution.amount,
+        date: contribution.date,
+      })),
+    ])
+    .sort((first, second) => second.date.localeCompare(first.date))
 
   return (
     <main className="page-view">
@@ -404,29 +476,83 @@ function SavingsPage({ members, selectedMember, onMemberChange, onAddMember }: S
             <small>{goal.target} target</small>
           </article>
         ))}
+        <article className="panel stat-panel add-savings-card">
+          <div>
+            <p className="eyebrow">Savings</p>
+            <h3>Add savings</h3>
+          </div>
+          <form className="add-savings-form" noValidate onSubmit={handleAddSavings}>
+            <label>
+              Member
+              <select
+                value={savingsMember || (selectedMember !== 'all' ? selectedMember : '')}
+                onChange={(event) => {
+                  setSavingsMember(event.target.value)
+                  setSavingsError('')
+                }}
+              >
+                <option value="">Select a member</option>
+                {members.map((member) => (
+                  <option key={member.name} value={member.name}>{member.name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Amount (PHP)
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={savingsAmount}
+                onChange={(event) => {
+                  setSavingsAmount(event.target.value)
+                  setSavingsError('')
+                }}
+                placeholder="0"
+              />
+            </label>
+            <label>
+              Date
+              <input
+                type="date"
+                required
+                value={savingsDate}
+                onChange={(event) => {
+                  setSavingsDate(event.target.value)
+                  setSavingsError('')
+                }}
+              />
+            </label>
+            <button type="submit" className="primary-button" disabled={members.length === 0}>
+              Add savings
+            </button>
+            {savingsError && <p className="member-error" role="alert">{savingsError}</p>}
+          </form>
+        </article>
       </section>
 
       <section className="panel full-width-panel">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Strategy</p>
-            <h3>Monthly contributions</h3>
+            <p className="eyebrow">Savings History</p>
+            <h3>Savings transactions</h3>
           </div>
         </div>
-        <div className="stats-grid">
-          <div className="stat-box">
-            <span>Cash savings</span>
-            <strong>₱9,840</strong>
-          </div>
-          <div className="stat-box">
-            <span>Investments</span>
-            <strong>₱14,200</strong>
-          </div>
-          <div className="stat-box">
-            <span>Auto-save</span>
-            <strong>₱640 / month</strong>
-          </div>
-        </div>
+        {savingsHistory.length > 0 ? (
+          <ul className="transaction-list savings-history-list">
+            {savingsHistory.map((transaction) => (
+              <li key={transaction.id} className="transaction-item">
+                <div>
+                  <strong>{transaction.type} · {transaction.member}</strong>
+                  <small>{formatDate(transaction.date)}</small>
+                </div>
+                <span className="positive">+{formatCurrency(transaction.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="savings-history-empty">No savings transactions for this selection yet.</p>
+        )}
       </section>
     </main>
   )
@@ -589,10 +715,21 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
   const [members, setMembers] = useState<Member[]>([])
   const [selectedMember, setSelectedMember] = useState('all')
+  const totalSavings = members.reduce((total, member) => total + getMemberSavings(member), 0)
 
   const addMember = (member: Member) => {
     setMembers((currentMembers) => [...currentMembers, member])
     setSelectedMember(member.name)
+  }
+
+  const addSavings = (memberName: string, amount: number, date: string) => {
+    setMembers((currentMembers) =>
+      currentMembers.map((member) =>
+        member.name === memberName
+          ? { ...member, contributions: [...member.contributions, { amount, date }] }
+          : member,
+      ),
+    )
   }
 
   const renderPage = () => {
@@ -604,6 +741,7 @@ function App() {
             selectedMember={selectedMember}
             onMemberChange={setSelectedMember}
             onAddMember={addMember}
+            onAddSavings={addSavings}
           />
         )
       case 'loans':
@@ -614,7 +752,7 @@ function App() {
         return <DataPage />
       case 'overview':
       default:
-        return <OverviewPage />
+        return <OverviewPage totalSavings={totalSavings} />
     }
   }
 
@@ -639,9 +777,6 @@ function App() {
           ))}
         </nav>
 
-        {activeTab !== 'overview' && (
-          <button type="button" className="primary-button">+ Add record</button>
-        )}
       </header>
 
       {renderPage()}
