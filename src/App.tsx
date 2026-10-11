@@ -1,17 +1,20 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
+import {
+  chooseDatabaseDirectory,
+  loadSavedDirectory,
+  loadSavedMembers,
+  readWorkbookMembers,
+  saveDirectory,
+  saveMembersLocally,
+  supportsDatabaseFolder,
+  writeWorkbookMembers,
+  type DatabaseDirectoryHandle,
+  type Member,
+} from './database'
 import './App.css'
 
 type TabKey = 'overview' | 'savings' | 'loans' | 'profits' | 'data'
-type ChartStyle = 'bar' | 'line' | 'curve' | 'bar3d'
-type SavingsContribution = { amount: number; date: string }
-type SavingsWithdrawal = { amount: number; date: string; reason: string }
-type Member = {
-  name: string
-  initialSavings: number
-  initialSavingsDate: string
-  contributions: SavingsContribution[]
-  withdrawals: SavingsWithdrawal[]
-}
+type ChartStyle = 'bar' | 'line' | 'curve'
 const getMemberSavings = (member: Member) =>
   member.initialSavings
   + member.contributions.reduce((total, contribution) => total + contribution.amount, 0)
@@ -103,7 +106,6 @@ const chartStyles: Array<{ value: ChartStyle; label: string }> = [
   { value: 'bar', label: 'Bars' },
   { value: 'line', label: 'Line' },
   { value: 'curve', label: 'Curve' },
-  { value: 'bar3d', label: '3D bars' },
 ]
 
 const formatCurrency = (amount: number) =>
@@ -167,7 +169,7 @@ function OverviewPage({ totalSavings }: { totalSavings: number }) {
           </div>
 
           <div className={`chart chart-${chartStyle}`} aria-label="Monthly profit trend">
-            {chartStyle === 'bar' || chartStyle === 'bar3d' ? (
+            {chartStyle === 'bar' ? (
               spendingTrend.map((bar) => (
                 <div key={bar.month} className="bar-group">
                   <div
@@ -523,6 +525,7 @@ function SavingsPage({
   const displayedInitialSavings = members
     .filter((member) => selectedMember === 'all' || member.name === selectedMember)
     .reduce((total, member) => total + getMemberSavings(member), 0)
+  const selectedMemberDetails = members.find((member) => member.name === selectedMember)
   const totalSavings = members.reduce((total, member) => total + getMemberSavings(member), 0)
   const savingsHistory: Array<{
     id: string
@@ -649,10 +652,16 @@ function SavingsPage({
       <section className="card-grid">
         <article className="panel stat-panel total-savings-card">
           <div className="mini-header">
-            <span>Total savings</span>
-            <strong>{formatCurrency(totalSavings)}</strong>
+            <span>{selectedMemberDetails?.name ?? 'Total savings'}</span>
+            <strong>{formatCurrency(selectedMemberDetails ? getMemberSavings(selectedMemberDetails) : totalSavings)}</strong>
           </div>
-          <small>Combined savings across all members</small>
+          <small>{selectedMemberDetails ? 'Current savings' : 'Combined savings across all members'}</small>
+          {selectedMemberDetails && (
+            <div className="total-savings-summary">
+              <span>All members total</span>
+              <strong>{formatCurrency(totalSavings)}</strong>
+            </div>
+          )}
         </article>
         {savingsPlans.map((goal) => (
           <article
@@ -940,15 +949,35 @@ function ProfitsPage() {
   )
 }
 
-function DataPage() {
+type DataPageProps = {
+  databaseMessage: string
+  isDatabaseConnecting: boolean
+  canChooseDatabaseFolder: boolean
+  onChooseDatabaseFolder: () => void
+}
+
+function DataPage({
+  databaseMessage,
+  isDatabaseConnecting,
+  canChooseDatabaseFolder,
+  onChooseDatabaseFolder,
+}: DataPageProps) {
   return (
     <main className="page-view">
       <section className="page-header">
         <div>
           <p className="eyebrow">Data</p>
           <h2>Financial insights</h2>
+          <p className="database-status" role="status">{databaseMessage}</p>
         </div>
-        <button type="button" className="primary-button">Export report</button>
+        <button
+          type="button"
+          className="primary-button"
+          disabled={isDatabaseConnecting || !canChooseDatabaseFolder}
+          onClick={onChooseDatabaseFolder}
+        >
+          {isDatabaseConnecting ? 'Connecting…' : 'Choose database folder'}
+        </button>
       </section>
 
       <section className="card-grid">
@@ -994,13 +1023,117 @@ function DataPage() {
 function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
   const [isDarkMode, setIsDarkMode] = useState(true)
-  const [members, setMembers] = useState<Member[]>([])
+  const [members, setMembers] = useState<Member[]>(loadSavedMembers)
   const [selectedMember, setSelectedMember] = useState('all')
+  const [databaseMessage, setDatabaseMessage] = useState('Loading saved data…')
+  const [isDatabaseConnecting, setIsDatabaseConnecting] = useState(false)
+  const [canChooseDatabaseFolder, setCanChooseDatabaseFolder] = useState(supportsDatabaseFolder)
+  const databaseDirectory = useRef<DatabaseDirectoryHandle | null>(null)
+  const initialMembers = useRef(members)
   const totalSavings = members.reduce((total, member) => total + getMemberSavings(member), 0)
 
   useEffect(() => {
     document.documentElement.dataset.theme = isDarkMode ? 'dark' : 'light'
   }, [isDarkMode])
+
+  useEffect(() => {
+    let isActive = true
+
+    const restoreDatabase = async () => {
+      if (!supportsDatabaseFolder()) {
+        setCanChooseDatabaseFolder(false)
+        setDatabaseMessage('Your data is saved on this device. Folder-based Excel sync requires Chrome or Edge.')
+        return
+      }
+
+      try {
+        const directory = await loadSavedDirectory()
+        if (!isActive) return
+        if (!directory) {
+          setDatabaseMessage('Your data is saved on this device. Choose a folder to create an Excel database.')
+          return
+        }
+
+        databaseDirectory.current = directory
+        const permission = await directory.queryPermission({ mode: 'readwrite' })
+        if (!isActive) return
+        if (permission !== 'granted') {
+          setDatabaseMessage(`Excel database folder: ${directory.name}. Select the folder again to reconnect.`)
+          return
+        }
+
+        const workbookMembers = await readWorkbookMembers(directory)
+        if (!isActive) return
+        if (workbookMembers) {
+          setMembers(workbookMembers)
+        } else {
+          await writeWorkbookMembers(directory, initialMembers.current)
+        }
+        setDatabaseMessage(`Excel database connected: ${directory.name}`)
+      } catch (error) {
+        if (!isActive) return
+        setDatabaseMessage(`Saved data is safe on this device. Excel database could not be opened: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
+    }
+
+    void restoreDatabase()
+    return () => {
+      isActive = false
+    }
+  }, [])
+
+  useEffect(() => {
+    saveMembersLocally(members)
+    const directory = databaseDirectory.current
+    if (!directory) return
+
+    let isActive = true
+    setDatabaseMessage(`Saving Excel database: ${directory.name}…`)
+    void writeWorkbookMembers(directory, members)
+      .then(() => {
+        if (isActive) setDatabaseMessage(`Excel database connected: ${directory.name}`)
+      })
+      .catch((error: unknown) => {
+        if (isActive) {
+          setDatabaseMessage(`Saved data is safe on this device. Excel sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+        }
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [members])
+
+  const handleChooseDatabaseFolder = async () => {
+    setIsDatabaseConnecting(true)
+    try {
+      let directory = databaseDirectory.current
+      if (directory) {
+        const permission = await directory.requestPermission({ mode: 'readwrite' })
+        if (permission !== 'granted') throw new Error('Permission to write to the selected folder was not granted.')
+      } else {
+        directory = await chooseDatabaseDirectory()
+      }
+
+      databaseDirectory.current = directory
+      await saveDirectory(directory)
+      const workbookMembers = await readWorkbookMembers(directory)
+      if (workbookMembers) {
+        setMembers(workbookMembers)
+      } else {
+        await writeWorkbookMembers(directory, members)
+      }
+      setDatabaseMessage(`Excel database connected: ${directory.name}`)
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setDatabaseMessage('Folder selection cancelled. Your data remains saved on this device.')
+      } else {
+        setDatabaseMessage(`Saved data is safe on this device. Excel database could not be connected: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
+    } finally {
+      setIsDatabaseConnecting(false)
+    }
+  }
 
   const addMember = (member: Member) => {
     setMembers((currentMembers) => [...currentMembers, member])
@@ -1045,7 +1178,14 @@ function App() {
       case 'profits':
         return <ProfitsPage />
       case 'data':
-        return <DataPage />
+        return (
+          <DataPage
+            databaseMessage={databaseMessage}
+            isDatabaseConnecting={isDatabaseConnecting}
+            canChooseDatabaseFolder={canChooseDatabaseFolder}
+            onChooseDatabaseFolder={handleChooseDatabaseFolder}
+          />
+        )
       case 'overview':
       default:
         return <OverviewPage totalSavings={totalSavings} />
