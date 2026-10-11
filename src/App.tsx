@@ -433,6 +433,7 @@ type SavingsPageProps = {
   members: Member[]
   selectedMember: string
   isAdmin: boolean
+  canEditSavings: boolean
   overallSavings: number
   onMemberChange: (member: string) => void
   onAddSavings: (memberName: string, amount: number, date: string) => void
@@ -443,6 +444,7 @@ function SavingsPage({
   members,
   selectedMember,
   isAdmin,
+  canEditSavings,
   overallSavings,
   onMemberChange,
   onAddSavings,
@@ -467,7 +469,9 @@ function SavingsPage({
 
   const handleAddSavings = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const memberName = savingsMember || (selectedMember !== 'all' ? selectedMember : '')
+    const memberName = isAdmin
+      ? savingsMember || (selectedMember !== 'all' ? selectedMember : '')
+      : members[0]?.name ?? ''
     const amount = Number(savingsAmount)
 
     if (!members.some((member) => member.name === memberName)) {
@@ -493,7 +497,9 @@ function SavingsPage({
 
   const handlePullOutSavings = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const memberName = withdrawalMember || (selectedMember !== 'all' ? selectedMember : '')
+    const memberName = isAdmin
+      ? withdrawalMember || (selectedMember !== 'all' ? selectedMember : '')
+      : members[0]?.name ?? ''
     const amount = Number(withdrawalAmount)
     const member = members.find((entry) => entry.name === memberName)
 
@@ -629,24 +635,28 @@ function SavingsPage({
               />
             </div>
             <small>{goal.target} target</small>
-            {isAdmin && goal.name === 'Home down payment' && (
+            {canEditSavings && goal.name === 'Home down payment' && (
               <div className="member-savings-actions">
                 <form className="add-savings-form" noValidate onSubmit={handleAddSavings}>
-                <label>
-                  Member
-                  <select
-                    value={savingsMember || (selectedMember !== 'all' ? selectedMember : '')}
-                    onChange={(event) => {
-                      setSavingsMember(event.target.value)
-                      setSavingsError('')
-                    }}
-                  >
-                    <option value="">Select a member</option>
-                    {members.map((member) => (
-                      <option key={member.name} value={member.name}>{member.name}</option>
-                    ))}
-                  </select>
-                </label>
+                {isAdmin ? (
+                  <label>
+                    Member
+                    <select
+                      value={savingsMember || (selectedMember !== 'all' ? selectedMember : '')}
+                      onChange={(event) => {
+                        setSavingsMember(event.target.value)
+                        setSavingsError('')
+                      }}
+                    >
+                      <option value="">Select a member</option>
+                      {members.map((member) => (
+                        <option key={member.name} value={member.name}>{member.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <span className="member-select-label">Member: {members[0]?.name}</span>
+                )}
                 <label>
                   Amount (PHP)
                   <input
@@ -682,27 +692,31 @@ function SavingsPage({
             )}
           </article>
         ))}
-        {isAdmin && <article className="panel stat-panel pull-out-card">
+        {canEditSavings && <article className="panel stat-panel pull-out-card">
           <div>
             <p className="eyebrow">Withdrawal</p>
             <h3>Pull out savings</h3>
           </div>
           <form className="pull-out-form" noValidate onSubmit={handlePullOutSavings}>
-            <label>
-              Member
-              <select
-                value={withdrawalMember || (selectedMember !== 'all' ? selectedMember : '')}
-                onChange={(event) => {
-                  setWithdrawalMember(event.target.value)
-                  setWithdrawalError('')
-                }}
-              >
-                <option value="">Select a member</option>
-                {members.map((member) => (
-                  <option key={member.name} value={member.name}>{member.name}</option>
-                ))}
-              </select>
-            </label>
+            {isAdmin ? (
+              <label>
+                Member
+                <select
+                  value={withdrawalMember || (selectedMember !== 'all' ? selectedMember : '')}
+                  onChange={(event) => {
+                    setWithdrawalMember(event.target.value)
+                    setWithdrawalError('')
+                  }}
+                >
+                  <option value="">Select a member</option>
+                  {members.map((member) => (
+                    <option key={member.name} value={member.name}>{member.name}</option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <span className="member-select-label">Member: {members[0]?.name}</span>
+            )}
             <label>
               Amount (PHP)
               <input
@@ -794,9 +808,12 @@ function SavingsPage({
 function LoansPage({ borrowers, onAddBorrower }: { borrowers: Borrower[]; onAddBorrower: (borrower: Borrower) => void }) {
   const [isAddingBorrower, setIsAddingBorrower] = useState(false)
   const [borrowerName, setBorrowerName] = useState('')
-  const [borrowerPhone, setBorrowerPhone] = useState('')
   const [borrowerLoanAmount, setBorrowerLoanAmount] = useState('')
   const [borrowerError, setBorrowerError] = useState('')
+  const borrowerLoanValue = Number(borrowerLoanAmount)
+  const paydayInterest = Number.isFinite(borrowerLoanValue) && borrowerLoanValue > 0
+    ? borrowerLoanValue * 0.03
+    : 0
 
   const handleAddBorrower = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -815,12 +832,11 @@ function LoansPage({ borrowers, onAddBorrower }: { borrowers: Borrower[]; onAddB
       id: crypto.randomUUID(),
       name,
       email: '',
-      phone: borrowerPhone.trim(),
       loanAmount,
+      paydayInterest: loanAmount * 0.03,
       createdAt: new Date().toISOString(),
     })
     setBorrowerName('')
-    setBorrowerPhone('')
     setBorrowerLoanAmount('')
     setBorrowerError('')
     setIsAddingBorrower(false)
@@ -857,13 +873,8 @@ function LoansPage({ borrowers, onAddBorrower }: { borrowers: Borrower[]; onAddB
             />
           </label>
           <label>
-            Phone
-            <input
-              type="tel"
-              value={borrowerPhone}
-              onChange={(event) => setBorrowerPhone(event.target.value)}
-              placeholder="Phone number"
-            />
+            Payday interest (3%)
+            <output>{formatCurrency(paydayInterest)}</output>
           </label>
           <label>
             Loan amount (PHP)
@@ -898,7 +909,9 @@ function LoansPage({ borrowers, onAddBorrower }: { borrowers: Borrower[]; onAddB
             {borrowers.map((borrower) => (
               <li key={borrower.id} className="borrower-item">
                 <strong>{borrower.name}</strong>
-                <span>{formatCurrency(borrower.loanAmount)}{borrower.phone ? ` · ${borrower.phone}` : ''}</span>
+                <span>
+                  Loan: {formatCurrency(borrower.loanAmount)} · Payday interest: {formatCurrency(borrower.loanAmount * 0.03)}
+                </span>
               </li>
             ))}
           </ul>
@@ -1347,10 +1360,14 @@ function App() {
   }
 
   const addSavings = (memberName: string, amount: number, date: string) => {
-    if (signedInRole !== 'admin') return
+    const canEditMemberSavings = (member: Member) =>
+      signedInRole === 'admin'
+      || (signedInRole === 'member'
+        && Boolean(signedInEmail.trim())
+        && member.accountEmail?.trim().toLowerCase() === signedInEmail.trim().toLowerCase())
     setMembers((currentMembers) =>
       currentMembers.map((member) =>
-        member.name === memberName
+        member.name === memberName && canEditMemberSavings(member)
           ? { ...member, contributions: [...member.contributions, { amount, date }] }
           : member,
       ),
@@ -1358,10 +1375,14 @@ function App() {
   }
 
   const pullOutSavings = (memberName: string, amount: number, date: string, reason: string) => {
-    if (signedInRole !== 'admin') return
+    const canEditMemberSavings = (member: Member) =>
+      signedInRole === 'admin'
+      || (signedInRole === 'member'
+        && Boolean(signedInEmail.trim())
+        && member.accountEmail?.trim().toLowerCase() === signedInEmail.trim().toLowerCase())
     setMembers((currentMembers) =>
       currentMembers.map((member) =>
-        member.name === memberName
+        member.name === memberName && canEditMemberSavings(member)
           ? { ...member, withdrawals: [...member.withdrawals, { amount, date, reason }] }
           : member,
       ),
@@ -1382,6 +1403,7 @@ function App() {
             members={signedInMember ? [signedInMember] : []}
             selectedMember={signedInMember?.name ?? ''}
             isAdmin={false}
+            canEditSavings={Boolean(signedInMember)}
             overallSavings={totalSavings}
             onMemberChange={() => undefined}
             onAddSavings={addSavings}
@@ -1400,6 +1422,7 @@ function App() {
             selectedMember={selectedMember}
             overallSavings={totalSavings}
             isAdmin
+            canEditSavings
             onMemberChange={setSelectedMember}
             onAddSavings={addSavings}
             onPullOutSavings={pullOutSavings}
@@ -1459,6 +1482,7 @@ function App() {
                 type="button"
                 className="login-button"
                 onClick={() => {
+                  if (!window.confirm('Are you sure you want to sign out?')) return
                   setSignedInUser('')
                   setSignedInEmail('')
                   setSignedInRole(null)

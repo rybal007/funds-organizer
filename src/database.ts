@@ -23,8 +23,8 @@ export type Borrower = {
   id: string
   name: string
   email?: string
-  phone: string
   loanAmount: number
+  paydayInterest: number
   createdAt: string
 }
 
@@ -238,8 +238,8 @@ export const readWorkbookData = async (
       id,
       name,
       email: String(row.getCell(3).value ?? '').trim(),
-      phone: String(row.getCell(4).value ?? '').trim(),
       loanAmount: Number(row.getCell(6).value) || 0,
+      paydayInterest: (Number(row.getCell(6).value) || 0) * 0.03,
       createdAt: getCellDate(row.getCell(5).value),
     })
   })
@@ -290,12 +290,12 @@ export const writeWorkbookData = async (
   ]))
 
   const borrowersSheet = workbook.addWorksheet('Borrowers')
-  borrowersSheet.addRow(['ID', 'Name', 'Email', 'Phone', 'Created At', 'Loan Amount (PHP)'])
+  borrowersSheet.addRow(['ID', 'Name', 'Email', 'Payday Interest (PHP)', 'Created At', 'Loan Amount (PHP)'])
   borrowers.forEach((borrower) => borrowersSheet.addRow([
     borrower.id,
     borrower.name,
     borrower.email ?? '',
-    borrower.phone,
+    borrower.loanAmount * 0.03,
     borrower.createdAt,
     borrower.loanAmount,
   ]))
