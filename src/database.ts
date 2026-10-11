@@ -19,6 +19,14 @@ export type DatabaseAccount = {
   passwordHash: string
   createdAt: string
 }
+export type Borrower = {
+  id: string
+  name: string
+  email?: string
+  phone: string
+  loanAmount: number
+  createdAt: string
+}
 
 export type DirectoryPermission = 'granted' | 'denied' | 'prompt'
 export type DatabaseFileHandle = {
@@ -148,7 +156,7 @@ export const verifyPassword = async (password: string, account: DatabaseAccount)
 
 export const readWorkbookData = async (
   directory: DatabaseDirectoryHandle,
-): Promise<{ members: Member[]; accounts: DatabaseAccount[] } | null> => {
+): Promise<{ members: Member[]; accounts: DatabaseAccount[]; borrowers: Borrower[] } | null> => {
   const ExcelJS = (await import('exceljs')).default
   let fileHandle: DatabaseFileHandle
   try {
@@ -220,13 +228,30 @@ export const readWorkbookData = async (
     }
   })
 
-  return { members: [...members.values()], accounts }
+  const borrowers: Borrower[] = []
+  workbook.getWorksheet('Borrowers')?.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return
+    const id = String(row.getCell(1).value ?? '').trim()
+    const name = String(row.getCell(2).value ?? '').trim()
+    if (!id || !name) return
+    borrowers.push({
+      id,
+      name,
+      email: String(row.getCell(3).value ?? '').trim(),
+      phone: String(row.getCell(4).value ?? '').trim(),
+      loanAmount: Number(row.getCell(6).value) || 0,
+      createdAt: getCellDate(row.getCell(5).value),
+    })
+  })
+
+  return { members: [...members.values()], accounts, borrowers }
 }
 
 export const writeWorkbookData = async (
   directory: DatabaseDirectoryHandle,
   members: Member[],
   accounts: DatabaseAccount[],
+  borrowers: Borrower[] = [],
 ) => {
   const ExcelJS = (await import('exceljs')).default
   const workbook = new ExcelJS.Workbook()
@@ -262,6 +287,17 @@ export const writeWorkbookData = async (
     account.passwordHash,
     account.createdAt,
     account.role,
+  ]))
+
+  const borrowersSheet = workbook.addWorksheet('Borrowers')
+  borrowersSheet.addRow(['ID', 'Name', 'Email', 'Phone', 'Created At', 'Loan Amount (PHP)'])
+  borrowers.forEach((borrower) => borrowersSheet.addRow([
+    borrower.id,
+    borrower.name,
+    borrower.email ?? '',
+    borrower.phone,
+    borrower.createdAt,
+    borrower.loanAmount,
   ]))
 
   const fileHandle = await directory.getFileHandle(DATABASE_FILE_NAME, { create: true })

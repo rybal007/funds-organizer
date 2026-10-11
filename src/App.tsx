@@ -12,6 +12,7 @@ import {
   verifyPassword,
   writeWorkbookData,
   type AccountRole,
+  type Borrower,
   type DatabaseAccount,
   type DatabaseDirectoryHandle,
   type Member,
@@ -782,15 +783,120 @@ function SavingsPage({
   )
 }
 
-function LoansPage() {
+function LoansPage({ borrowers, onAddBorrower }: { borrowers: Borrower[]; onAddBorrower: (borrower: Borrower) => void }) {
+  const [isAddingBorrower, setIsAddingBorrower] = useState(false)
+  const [borrowerName, setBorrowerName] = useState('')
+  const [borrowerPhone, setBorrowerPhone] = useState('')
+  const [borrowerLoanAmount, setBorrowerLoanAmount] = useState('')
+  const [borrowerError, setBorrowerError] = useState('')
+
+  const handleAddBorrower = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const name = borrowerName.trim()
+    const loanAmount = Number(borrowerLoanAmount)
+    if (!name) {
+      setBorrowerError('Enter the borrower’s name.')
+      return
+    }
+    if (borrowerLoanAmount === '' || !Number.isFinite(loanAmount) || loanAmount <= 0) {
+      setBorrowerError('Enter a loan amount greater than zero.')
+      return
+    }
+
+    onAddBorrower({
+      id: crypto.randomUUID(),
+      name,
+      email: '',
+      phone: borrowerPhone.trim(),
+      loanAmount,
+      createdAt: new Date().toISOString(),
+    })
+    setBorrowerName('')
+    setBorrowerPhone('')
+    setBorrowerLoanAmount('')
+    setBorrowerError('')
+    setIsAddingBorrower(false)
+  }
+
   return (
     <main className="page-view">
       <section className="page-header">
         <div>
           <p className="eyebrow">Loans</p>
-          <h2>Debt overview</h2>
+          <h2>LOANS</h2>
         </div>
-        <button type="button" className="secondary-button">Pay schedule</button>
+        <div className="loans-actions">
+          <button type="button" className="secondary-button" onClick={() => setIsAddingBorrower((open) => !open)}>
+            {isAddingBorrower ? 'Cancel' : 'Add borrower'}
+          </button>
+          <button type="button" className="secondary-button">Pay schedule</button>
+        </div>
+      </section>
+
+      {isAddingBorrower && (
+        <form className="add-borrower-form" noValidate onSubmit={handleAddBorrower}>
+          <label>
+            Borrower name
+            <input
+              autoFocus
+              required
+              value={borrowerName}
+              onChange={(event) => {
+                setBorrowerName(event.target.value)
+                setBorrowerError('')
+              }}
+              placeholder="Full name"
+            />
+          </label>
+          <label>
+            Phone
+            <input
+              type="tel"
+              value={borrowerPhone}
+              onChange={(event) => setBorrowerPhone(event.target.value)}
+              placeholder="Phone number"
+            />
+          </label>
+          <label>
+            Loan amount (PHP)
+            <input
+              type="number"
+              min="0.01"
+              step="any"
+              required
+              value={borrowerLoanAmount}
+              onChange={(event) => {
+                setBorrowerLoanAmount(event.target.value)
+                setBorrowerError('')
+              }}
+              placeholder="0"
+            />
+          </label>
+          <button type="submit" className="primary-button">Save borrower</button>
+          {borrowerError && <p className="member-error" role="alert">{borrowerError}</p>}
+        </form>
+      )}
+
+      <section className="panel full-width-panel borrower-panel">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Borrowers</p>
+            <h3>Borrower directory</h3>
+          </div>
+          <span className="meta-pill">{borrowers.length} total</span>
+        </div>
+        {borrowers.length > 0 ? (
+          <ul className="borrower-list">
+            {borrowers.map((borrower) => (
+              <li key={borrower.id} className="borrower-item">
+                <strong>{borrower.name}</strong>
+                <span>{formatCurrency(borrower.loanAmount)}{borrower.phone ? ` · ${borrower.phone}` : ''}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="savings-history-empty">No borrowers added yet.</p>
+        )}
       </section>
 
       <section className="card-grid">
@@ -911,7 +1017,7 @@ function DataPage({
           disabled={isDatabaseConnecting || !canChooseDatabaseFolder}
           onClick={onChooseDatabaseFolder}
         >
-          {isDatabaseConnecting ? 'Connecting…' : 'Choose database folder'}
+          {isDatabaseConnecting ? 'Connecting…' : 'Choose or change database folder'}
         </button>
       </section>
 
@@ -963,6 +1069,7 @@ function App() {
   const [loginMessage, setLoginMessage] = useState('')
   const [members, setMembers] = useState<Member[]>(loadSavedMembers)
   const [accounts, setAccounts] = useState<DatabaseAccount[]>([])
+  const [borrowers, setBorrowers] = useState<Borrower[]>([])
   const [signedInUser, setSignedInUser] = useState('')
   const [signedInRole, setSignedInRole] = useState<AccountRole | null>(null)
   const [selectedMember, setSelectedMember] = useState('all')
@@ -972,6 +1079,7 @@ function App() {
   const databaseDirectory = useRef<DatabaseDirectoryHandle | null>(null)
   const initialMembers = useRef(members)
   const initialAccounts = useRef(accounts)
+  const initialBorrowers = useRef(borrowers)
   const totalSavings = members.reduce((total, member) => total + getMemberSavings(member), 0)
 
   useEffect(() => {
@@ -1009,8 +1117,9 @@ function App() {
         if (workbookData) {
           setMembers(syncAccountMembers(workbookData.accounts, workbookData.members))
           setAccounts(workbookData.accounts)
+          setBorrowers(workbookData.borrowers)
         } else {
-          await writeWorkbookData(directory, initialMembers.current, initialAccounts.current)
+          await writeWorkbookData(directory, initialMembers.current, initialAccounts.current, initialBorrowers.current)
         }
         setDatabaseMessage(`Excel database connected: ${directory.name}`)
       } catch (error) {
@@ -1031,42 +1140,56 @@ function App() {
     if (!directory) return
 
     let isActive = true
-    setDatabaseMessage(`Saving Excel database: ${directory.name}…`)
-    void writeWorkbookData(directory, members, accounts)
-      .then(() => {
-        if (isActive) setDatabaseMessage(`Excel database connected: ${directory.name}`)
-      })
-      .catch((error: unknown) => {
-        if (isActive) {
-          setDatabaseMessage(`Saved data is safe on this device. Excel sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    const syncWorkbook = async () => {
+      try {
+        const permission = await directory.queryPermission({ mode: 'readwrite' })
+        if (!isActive) return
+        if (permission !== 'granted') {
+          setDatabaseMessage(`Your data is safe on this device. Reconnect the Excel database folder "${directory.name}" to resume syncing.`)
+          return
         }
-      })
+
+        setDatabaseMessage(`Saving Excel database: ${directory.name}…`)
+        await writeWorkbookData(directory, members, accounts, borrowers)
+        if (isActive) setDatabaseMessage(`Excel database connected: ${directory.name}`)
+      } catch (error) {
+        if (!isActive) return
+        const message = error instanceof Error ? error.message : 'Unknown error'
+        if (message.includes('not allowed by the user agent') || message.includes('current context')) {
+          setDatabaseMessage(`Your data is safe on this device. Reconnect the Excel database folder "${directory.name}" to grant access again.`)
+          return
+        }
+        setDatabaseMessage(`Saved data is safe on this device. Excel sync failed: ${message}`)
+      }
+    }
+
+    void syncWorkbook()
 
     return () => {
       isActive = false
     }
-  }, [members, accounts])
+  }, [members, accounts, borrowers])
 
   const handleChooseDatabaseFolder = async () => {
     setIsDatabaseConnecting(true)
     try {
-      let directory = databaseDirectory.current
-      if (directory) {
-        const permission = await directory.requestPermission({ mode: 'readwrite' })
-        if (permission !== 'granted') throw new Error('Permission to write to the selected folder was not granted.')
-      } else {
-        directory = await chooseDatabaseDirectory()
-      }
-
-      databaseDirectory.current = directory
-      await saveDirectory(directory)
+      const directory = await chooseDatabaseDirectory()
       const workbookData = await readWorkbookData(directory)
+      let connectedMembers = members
+      let connectedAccounts = accounts
+      let connectedBorrowers = borrowers
       if (workbookData) {
-        setMembers(syncAccountMembers(workbookData.accounts, workbookData.members))
-        setAccounts(workbookData.accounts)
+        connectedMembers = syncAccountMembers(workbookData.accounts, workbookData.members)
+        connectedAccounts = workbookData.accounts
+        connectedBorrowers = workbookData.borrowers
       } else {
-        await writeWorkbookData(directory, members, accounts)
+        await writeWorkbookData(directory, connectedMembers, connectedAccounts, connectedBorrowers)
       }
+      await saveDirectory(directory)
+      databaseDirectory.current = directory
+      setMembers(connectedMembers)
+      setAccounts(connectedAccounts)
+      setBorrowers(connectedBorrowers)
       setDatabaseMessage(`Excel database connected: ${directory.name}`)
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
@@ -1086,23 +1209,31 @@ function App() {
     const email = String(formData.get('email') ?? '').trim().toLowerCase()
     const password = String(formData.get('password') ?? '')
     const name = String(formData.get('name') ?? '').trim()
+    const startingSavings = Number(formData.get('initialSavings') ?? 0)
     setLoginMessage('Checking the Excel database…')
 
     try {
       const directory = databaseDirectory.current
       if (!directory) {
-        throw new Error('Choose the Excel database folder on the Data tab before using login or registration.')
+        throw new Error('Choose the database folder above before registering or signing in.')
       }
 
-      let permission = await directory.queryPermission({ mode: 'readwrite' })
-      if (permission !== 'granted') permission = await directory.requestPermission({ mode: 'readwrite' })
-      if (permission !== 'granted') throw new Error('Permission to access the Excel database was not granted.')
+      const permission = await directory.queryPermission({ mode: 'readwrite' })
+      if (permission !== 'granted') {
+        throw new Error('Database folder access has expired. Choose or change the database folder above, then try again.')
+      }
 
       const workbookData = await readWorkbookData(directory)
       const savedMembers = workbookData?.members ?? members
       const savedAccounts = workbookData?.accounts ?? accounts
+      const savedBorrowers = workbookData?.borrowers ?? borrowers
+      databaseDirectory.current = directory
+      await saveDirectory(directory)
 
       if (isRegisterMode) {
+        if (!Number.isFinite(startingSavings) || startingSavings < 0) {
+          throw new Error('Enter an initial savings amount of zero or more.')
+        }
         if (savedAccounts.some((account) => account.email === email)) {
           throw new Error('An account with that email already exists.')
         }
@@ -1119,9 +1250,23 @@ function App() {
         }
         const updatedAccounts = [...savedAccounts, account]
         const updatedMembers = syncAccountMembers(updatedAccounts, savedMembers)
-        await writeWorkbookData(directory, updatedMembers, updatedAccounts)
+        const accountMember = updatedMembers.find((member) => member.accountEmail === email)
+        if (accountMember && startingSavings > 0) {
+          const today = getLocalDate()
+          const hasExistingSavings = accountMember.initialSavings > 0
+            || accountMember.contributions.length > 0
+            || accountMember.withdrawals.length > 0
+          if (hasExistingSavings) {
+            accountMember.contributions.push({ amount: startingSavings, date: today })
+          } else {
+            accountMember.initialSavings = startingSavings
+            accountMember.initialSavingsDate = today
+          }
+        }
+        await writeWorkbookData(directory, updatedMembers, updatedAccounts, savedBorrowers)
         setMembers(updatedMembers)
         setAccounts(updatedAccounts)
+        setBorrowers(savedBorrowers)
         setDatabaseMessage(`Excel database connected: ${directory.name}`)
         setSignedInUser(account.name)
         setSignedInRole(account.role)
@@ -1132,6 +1277,7 @@ function App() {
         }
         setMembers(syncAccountMembers(savedAccounts, savedMembers))
         setAccounts(savedAccounts)
+        setBorrowers(savedBorrowers)
         setSignedInUser(account.name)
         setSignedInRole(account.role)
       }
@@ -1139,7 +1285,11 @@ function App() {
       setLoginMessage('')
       setIsLoginOpen(false)
     } catch (error) {
-      setLoginMessage(error instanceof Error ? error.message : 'Could not access the Excel database.')
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setLoginMessage('Folder selection cancelled. Choose a database folder to continue registering or signing in.')
+      } else {
+        setLoginMessage(error instanceof Error ? error.message : 'Could not access the Excel database.')
+      }
     } finally {
       const passwordInput = form.elements.namedItem('password')
       if (passwordInput instanceof HTMLInputElement) passwordInput.value = ''
@@ -1166,6 +1316,10 @@ function App() {
     )
   }
 
+  const addBorrower = (borrower: Borrower) => {
+    setBorrowers((currentBorrowers) => [...currentBorrowers, borrower])
+  }
+
   const renderPage = () => {
     switch (activeTab) {
       case 'savings':
@@ -1179,7 +1333,7 @@ function App() {
           />
         )
       case 'loans':
-        return <LoansPage />
+        return <LoansPage borrowers={borrowers} onAddBorrower={addBorrower} />
       case 'profits':
         return <ProfitsPage />
       case 'data':
@@ -1295,7 +1449,7 @@ function App() {
                   disabled={isDatabaseConnecting || !canChooseDatabaseFolder}
                   onClick={() => void handleChooseDatabaseFolder()}
                 >
-                  {isDatabaseConnecting ? 'Connecting…' : 'Choose database folder'}
+                  {isDatabaseConnecting ? 'Connecting…' : 'Choose or change database folder'}
                 </button>
               </div>
             )}
@@ -1308,6 +1462,17 @@ function App() {
                   <label>
                     Full name
                     <input type="text" name="name" autoComplete="name" required autoFocus />
+                  </label>
+                  <label>
+                    Initial savings (PHP)
+                    <input
+                      type="number"
+                      name="initialSavings"
+                      min="0"
+                      step="any"
+                      defaultValue="0"
+                      required
+                    />
                   </label>
                   <label>
                     Account role
