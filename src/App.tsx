@@ -1,24 +1,71 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { createPortal } from 'react-dom'
 import {
   chooseDatabaseDirectory,
+  createPasswordHash,
   loadSavedDirectory,
   loadSavedMembers,
-  readWorkbookMembers,
+  readWorkbookData,
   saveDirectory,
   saveMembersLocally,
   supportsDatabaseFolder,
-  writeWorkbookMembers,
+  verifyPassword,
+  writeWorkbookData,
+  type AccountRole,
+  type DatabaseAccount,
   type DatabaseDirectoryHandle,
   type Member,
 } from './database'
 import './App.css'
 
 type TabKey = 'overview' | 'savings' | 'loans' | 'profits' | 'data'
-type ChartStyle = 'bar' | 'line' | 'curve'
+type ChartStyle = 'bar' | 'line'
 const getMemberSavings = (member: Member) =>
   member.initialSavings
   + member.contributions.reduce((total, contribution) => total + contribution.amount, 0)
   - member.withdrawals.reduce((total, withdrawal) => total + withdrawal.amount, 0)
+
+const syncAccountMembers = (accounts: DatabaseAccount[], currentMembers: Member[]) => {
+  const members = currentMembers.map((member) => ({ ...member }))
+
+  accounts.forEach((account) => {
+    const normalizedEmail = account.email.trim().toLowerCase()
+    const linkedMember = members.find((member) => member.accountEmail?.toLowerCase() === normalizedEmail)
+    if (linkedMember) return
+
+    const existingMember = members.find((member) =>
+      !member.accountEmail && member.name.trim().toLowerCase() === account.name.trim().toLowerCase(),
+    )
+    if (existingMember) {
+      existingMember.accountEmail = normalizedEmail
+      return
+    }
+
+    const baseName = account.name.trim() || account.email
+    const hasName = (name: string) => members.some((member) => member.name.toLowerCase() === name.toLowerCase())
+    let memberName = baseName
+    if (hasName(memberName)) memberName = `${baseName} (${account.email})`
+    let suffix = 2
+    while (hasName(memberName)) {
+      memberName = `${baseName} (${account.email}, ${suffix})`
+      suffix += 1
+    }
+
+    members.push({
+      name: memberName,
+      accountEmail: normalizedEmail,
+      initialSavings: 0,
+      initialSavingsDate: getLocalDate(),
+      contributions: [],
+      withdrawals: [],
+    })
+  })
+
+  const registeredEmails = new Set(accounts.map((account) => account.email.trim().toLowerCase()))
+  return members.filter((member) =>
+    member.accountEmail !== undefined && registeredEmails.has(member.accountEmail.trim().toLowerCase()),
+  )
+}
 
 const summaryCards = [
   { label: 'Available funds', value: '₱32,480', delta: '+₱1,240', tone: 'positive' },
@@ -105,7 +152,6 @@ const tabs: Array<{ id: TabKey; label: string }> = [
 const chartStyles: Array<{ value: ChartStyle; label: string }> = [
   { value: 'bar', label: 'Bars' },
   { value: 'line', label: 'Line' },
-  { value: 'curve', label: 'Curve' },
 ]
 
 const formatCurrency = (amount: number) =>
@@ -138,11 +184,8 @@ function OverviewPage({ totalSavings }: { totalSavings: number }) {
     x: 20 + (index / (spendingTrend.length - 1)) * 1060,
     y: 90 - (bar.value / maxMonthlyProfit) * 76,
   }))
-  const chartPath = chartPoints.slice(1).reduce((path, point, index) => {
-    const previous = chartPoints[index]
-    if (chartStyle === 'line') return `${path} L ${point.x} ${point.y}`
-    const controlOffset = (point.x - previous.x) / 3
-    return `${path} C ${previous.x + controlOffset} ${previous.y} ${point.x - controlOffset} ${point.y} ${point.x} ${point.y}`
+  const chartPath = chartPoints.slice(1).reduce((path, point) => {
+    return `${path} L ${point.x} ${point.y}`
   }, `M ${chartPoints[0].x} ${chartPoints[0].y}`)
   const selectedChartStyle = chartStyles.find((style) => style.value === chartStyle)!
 
@@ -277,7 +320,7 @@ function OverviewPage({ totalSavings }: { totalSavings: number }) {
 
           <div className="account-card muted">
             <div className="account-meta">
-              <span>Goal check</span>
+              <span>ALERT!</span>
               <strong>On track</strong>
             </div>
             <div className="account-balance">
@@ -389,7 +432,6 @@ type SavingsPageProps = {
   members: Member[]
   selectedMember: string
   onMemberChange: (member: string) => void
-  onAddMember: (member: Member) => void
   onAddSavings: (memberName: string, amount: number, date: string) => void
   onPullOutSavings: (memberName: string, amount: number, date: string, reason: string) => void
 }
@@ -398,15 +440,9 @@ function SavingsPage({
   members,
   selectedMember,
   onMemberChange,
-  onAddMember,
   onAddSavings,
   onPullOutSavings,
 }: SavingsPageProps) {
-  const [isAddingMember, setIsAddingMember] = useState(false)
-  const [memberName, setMemberName] = useState('')
-  const [initialSavings, setInitialSavings] = useState('')
-  const [initialSavingsDate, setInitialSavingsDate] = useState(getLocalDate)
-  const [memberError, setMemberError] = useState('')
   const [savingsMember, setSavingsMember] = useState('')
   const [savingsAmount, setSavingsAmount] = useState('')
   const [savingsDate, setSavingsDate] = useState(getLocalDate)
@@ -423,45 +459,6 @@ function SavingsPage({
   const withdrawalFee = Number.isFinite(parsedWithdrawalAmount) && parsedWithdrawalAmount > 0
     ? parsedWithdrawalAmount * 0.1
     : 0
-
-  const handleAddMember = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    const name = memberName.trim()
-    const savings = Number(initialSavings)
-
-    if (!name) {
-      setMemberError('Enter a member name.')
-      return
-    }
-
-    if (name.toLowerCase() === 'all' || members.some((member) => member.name.toLowerCase() === name.toLowerCase())) {
-      setMemberError('Choose a unique member name other than All.')
-      return
-    }
-
-    if (initialSavings === '' || !Number.isFinite(savings) || savings < 0) {
-      setMemberError('Enter an initial savings amount of zero or more.')
-      return
-    }
-
-    if (!initialSavingsDate) {
-      setMemberError('Choose a date for the initial savings.')
-      return
-    }
-
-    onAddMember({
-      name,
-      initialSavings: savings,
-      initialSavingsDate,
-      contributions: [],
-      withdrawals: [],
-    })
-    setMemberName('')
-    setInitialSavings('')
-    setInitialSavingsDate(getLocalDate())
-    setMemberError('')
-    setIsAddingMember(false)
-  }
 
   const handleAddSavings = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -584,70 +581,8 @@ function SavingsPage({
               ))}
             </select>
           </label>
-          <button
-            type="button"
-            className="primary-button"
-            onClick={() => {
-              setIsAddingMember((isAdding) => !isAdding)
-              setMemberError('')
-            }}
-          >
-            Add members
-          </button>
         </div>
       </section>
-
-      {isAddingMember && (
-        <form className="add-member-form" noValidate onSubmit={handleAddMember}>
-          <label>
-            Member name
-            <input
-              id="new-member-name"
-              value={memberName}
-              onChange={(event) => {
-                setMemberName(event.target.value)
-                setMemberError('')
-              }}
-              placeholder="Enter a name"
-              autoFocus
-            />
-          </label>
-          <label>
-            Initial savings (PHP)
-            <input
-              id="initial-savings"
-              type="number"
-              min="0"
-              step="any"
-              required
-              value={initialSavings}
-              onChange={(event) => {
-                setInitialSavings(event.target.value)
-                setMemberError('')
-              }}
-              placeholder="0"
-            />
-          </label>
-          <label>
-            Initial savings date
-            <input
-              id="initial-savings-date"
-              type="date"
-              required
-              value={initialSavingsDate}
-              onChange={(event) => {
-                setInitialSavingsDate(event.target.value)
-                setMemberError('')
-              }}
-            />
-          </label>
-          <button type="submit" className="secondary-button">Add member</button>
-          <button type="button" className="secondary-button" onClick={() => setIsAddingMember(false)}>
-            Cancel
-          </button>
-          {memberError && <p className="member-error" role="alert">{memberError}</p>}
-        </form>
-      )}
 
       <section className="card-grid">
         <article className="panel stat-panel total-savings-card">
@@ -1023,13 +958,20 @@ function DataPage({
 function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
   const [isDarkMode, setIsDarkMode] = useState(true)
+  const [isLoginOpen, setIsLoginOpen] = useState(false)
+  const [isRegisterMode, setIsRegisterMode] = useState(false)
+  const [loginMessage, setLoginMessage] = useState('')
   const [members, setMembers] = useState<Member[]>(loadSavedMembers)
+  const [accounts, setAccounts] = useState<DatabaseAccount[]>([])
+  const [signedInUser, setSignedInUser] = useState('')
+  const [signedInRole, setSignedInRole] = useState<AccountRole | null>(null)
   const [selectedMember, setSelectedMember] = useState('all')
   const [databaseMessage, setDatabaseMessage] = useState('Loading saved data…')
   const [isDatabaseConnecting, setIsDatabaseConnecting] = useState(false)
   const [canChooseDatabaseFolder, setCanChooseDatabaseFolder] = useState(supportsDatabaseFolder)
   const databaseDirectory = useRef<DatabaseDirectoryHandle | null>(null)
   const initialMembers = useRef(members)
+  const initialAccounts = useRef(accounts)
   const totalSavings = members.reduce((total, member) => total + getMemberSavings(member), 0)
 
   useEffect(() => {
@@ -1062,12 +1004,13 @@ function App() {
           return
         }
 
-        const workbookMembers = await readWorkbookMembers(directory)
+        const workbookData = await readWorkbookData(directory)
         if (!isActive) return
-        if (workbookMembers) {
-          setMembers(workbookMembers)
+        if (workbookData) {
+          setMembers(syncAccountMembers(workbookData.accounts, workbookData.members))
+          setAccounts(workbookData.accounts)
         } else {
-          await writeWorkbookMembers(directory, initialMembers.current)
+          await writeWorkbookData(directory, initialMembers.current, initialAccounts.current)
         }
         setDatabaseMessage(`Excel database connected: ${directory.name}`)
       } catch (error) {
@@ -1089,7 +1032,7 @@ function App() {
 
     let isActive = true
     setDatabaseMessage(`Saving Excel database: ${directory.name}…`)
-    void writeWorkbookMembers(directory, members)
+    void writeWorkbookData(directory, members, accounts)
       .then(() => {
         if (isActive) setDatabaseMessage(`Excel database connected: ${directory.name}`)
       })
@@ -1102,7 +1045,7 @@ function App() {
     return () => {
       isActive = false
     }
-  }, [members])
+  }, [members, accounts])
 
   const handleChooseDatabaseFolder = async () => {
     setIsDatabaseConnecting(true)
@@ -1117,11 +1060,12 @@ function App() {
 
       databaseDirectory.current = directory
       await saveDirectory(directory)
-      const workbookMembers = await readWorkbookMembers(directory)
-      if (workbookMembers) {
-        setMembers(workbookMembers)
+      const workbookData = await readWorkbookData(directory)
+      if (workbookData) {
+        setMembers(syncAccountMembers(workbookData.accounts, workbookData.members))
+        setAccounts(workbookData.accounts)
       } else {
-        await writeWorkbookMembers(directory, members)
+        await writeWorkbookData(directory, members, accounts)
       }
       setDatabaseMessage(`Excel database connected: ${directory.name}`)
     } catch (error) {
@@ -1135,9 +1079,71 @@ function App() {
     }
   }
 
-  const addMember = (member: Member) => {
-    setMembers((currentMembers) => [...currentMembers, member])
-    setSelectedMember(member.name)
+  const handleAuthSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const form = event.currentTarget
+    const formData = new FormData(form)
+    const email = String(formData.get('email') ?? '').trim().toLowerCase()
+    const password = String(formData.get('password') ?? '')
+    const name = String(formData.get('name') ?? '').trim()
+    setLoginMessage('Checking the Excel database…')
+
+    try {
+      const directory = databaseDirectory.current
+      if (!directory) {
+        throw new Error('Choose the Excel database folder on the Data tab before using login or registration.')
+      }
+
+      let permission = await directory.queryPermission({ mode: 'readwrite' })
+      if (permission !== 'granted') permission = await directory.requestPermission({ mode: 'readwrite' })
+      if (permission !== 'granted') throw new Error('Permission to access the Excel database was not granted.')
+
+      const workbookData = await readWorkbookData(directory)
+      const savedMembers = workbookData?.members ?? members
+      const savedAccounts = workbookData?.accounts ?? accounts
+
+      if (isRegisterMode) {
+        if (savedAccounts.some((account) => account.email === email)) {
+          throw new Error('An account with that email already exists.')
+        }
+
+        const { salt, passwordHash } = await createPasswordHash(password)
+        const role: AccountRole = savedAccounts.length === 0 ? 'admin' : 'member'
+        const account: DatabaseAccount = {
+          email,
+          name,
+          role,
+          salt,
+          passwordHash,
+          createdAt: new Date().toISOString(),
+        }
+        const updatedAccounts = [...savedAccounts, account]
+        const updatedMembers = syncAccountMembers(updatedAccounts, savedMembers)
+        await writeWorkbookData(directory, updatedMembers, updatedAccounts)
+        setMembers(updatedMembers)
+        setAccounts(updatedAccounts)
+        setDatabaseMessage(`Excel database connected: ${directory.name}`)
+        setSignedInUser(account.name)
+        setSignedInRole(account.role)
+      } else {
+        const account = savedAccounts.find((savedAccount) => savedAccount.email === email)
+        if (!account || !(await verifyPassword(password, account))) {
+          throw new Error('Email or password is incorrect.')
+        }
+        setMembers(syncAccountMembers(savedAccounts, savedMembers))
+        setAccounts(savedAccounts)
+        setSignedInUser(account.name)
+        setSignedInRole(account.role)
+      }
+
+      setLoginMessage('')
+      setIsLoginOpen(false)
+    } catch (error) {
+      setLoginMessage(error instanceof Error ? error.message : 'Could not access the Excel database.')
+    } finally {
+      const passwordInput = form.elements.namedItem('password')
+      if (passwordInput instanceof HTMLInputElement) passwordInput.value = ''
+    }
   }
 
   const addSavings = (memberName: string, amount: number, date: string) => {
@@ -1168,7 +1174,6 @@ function App() {
             members={members}
             selectedMember={selectedMember}
             onMemberChange={setSelectedMember}
-            onAddMember={addMember}
             onAddSavings={addSavings}
             onPullOutSavings={pullOutSavings}
           />
@@ -1203,28 +1208,157 @@ function App() {
       >
         <span aria-hidden="true">{isDarkMode ? '☼' : '☾'}</span>
       </button>
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">Welcome back</p>
-          <h1>Savings</h1>
-        </div>
+      {signedInUser ? (
+        <>
+          <header className="topbar">
+            <div>
+              <p className="eyebrow">Welcome back</p>
+              <h1>{signedInUser}</h1>
+            </div>
+            <div className="topbar-actions">
+              <nav className="main-nav" aria-label="Primary navigation">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    className={`nav-link ${activeTab === tab.id ? 'active' : ''}`}
+                    onClick={() => setActiveTab(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </nav>
+              <button
+                type="button"
+                className="login-button"
+                onClick={() => {
+                  setSignedInUser('')
+                  setSignedInRole(null)
+                  setLoginMessage('')
+                  setIsRegisterMode(false)
+                }}
+              >
+                Sign out ({signedInUser})
+              </button>
+              {signedInRole && (
+                <span className={`account-role ${signedInRole}`}>
+                  {signedInRole === 'admin' ? 'Administrator' : 'Member'}
+                </span>
+              )}
+            </div>
+          </header>
+          {renderPage()}
+        </>
+      ) : (
+        <main className="auth-locked-screen" aria-label="Sign in required">
+          <p className="eyebrow">Funds Organizer</p>
+          <h1>Sign in to continue</h1>
+          <p>Your savings dashboard is locked until you sign in.</p>
+        </main>
+      )}
 
-        <nav className="main-nav" aria-label="Primary navigation">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              className={`nav-link ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
+      {(!signedInUser || isLoginOpen) && (
+        createPortal(
+          <div
+            className={`login-overlay ${signedInUser ? '' : 'login-overlay-locked'}`}
+            data-theme={isDarkMode ? 'dark' : 'light'}
+            onClick={(event) => {
+              if (signedInUser && event.target === event.currentTarget) setIsLoginOpen(false)
+            }}
+            onKeyDown={(event) => {
+              if (signedInUser && event.key === 'Escape') setIsLoginOpen(false)
+            }}
+          >
+            <section className="login-dialog" role="dialog" aria-modal="true" aria-labelledby="login-title">
+            <div className="login-dialog-header">
+              <div>
+                <p className="eyebrow">Funds Organizer</p>
+                <h2 id="login-title">{isRegisterMode ? 'Create account' : 'Log in'}</h2>
+              </div>
+              {signedInUser && (
+                <button
+                  type="button"
+                  className="login-close-button"
+                  aria-label="Close login dialog"
+                  onClick={() => setIsLoginOpen(false)}
+                >
+                  ×
+                </button>
+              )}
+            </div>
+            {!signedInUser && (
+              <div className="login-database-setup">
+                <p className="login-note">{databaseMessage}</p>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={isDatabaseConnecting || !canChooseDatabaseFolder}
+                  onClick={() => void handleChooseDatabaseFolder()}
+                >
+                  {isDatabaseConnecting ? 'Connecting…' : 'Choose database folder'}
+                </button>
+              </div>
+            )}
+            <form
+              className="login-form"
+              onSubmit={(event) => void handleAuthSubmit(event)}
             >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-
-      </header>
-
-      {renderPage()}
+              {isRegisterMode && (
+                <>
+                  <label>
+                    Full name
+                    <input type="text" name="name" autoComplete="name" required autoFocus />
+                  </label>
+                  <label>
+                    Account role
+                    <select value={accounts.length === 0 ? 'admin' : 'member'} disabled>
+                      <option value="admin">Administrator</option>
+                      <option value="member">Member</option>
+                    </select>
+                  </label>
+                  <p className="login-note">
+                    The first account in this database is the administrator. Later accounts are members.
+                  </p>
+                </>
+              )}
+              <label>
+                Email address
+                <input type="email" name="email" autoComplete="email" required autoFocus={!isRegisterMode} />
+              </label>
+              <label>
+                Password
+                <input
+                  type="password"
+                  name="password"
+                  autoComplete={isRegisterMode ? 'new-password' : 'current-password'}
+                  minLength={isRegisterMode ? 8 : undefined}
+                  required
+                />
+              </label>
+              <button type="submit" className="primary-button">
+                {isRegisterMode ? 'Create account' : 'Sign in'}
+              </button>
+              <p className="login-note" role="status">
+                {loginMessage || 'Accounts are checked and stored in the selected Excel database.'}
+              </p>
+              <p className="login-switch">
+                {isRegisterMode ? 'Already have an account?' : 'New here?'}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRegisterMode((isRegistering) => !isRegistering)
+                    setLoginMessage('')
+                  }}
+                >
+                  {isRegisterMode ? 'Log in' : 'Register'}
+                </button>
+              </p>
+            </form>
+            </section>
+          </div>,
+          document.body,
+        )
+      )}
     </div>
   )
 }

@@ -4,10 +4,20 @@ export type SavingsContribution = { amount: number; date: string }
 export type SavingsWithdrawal = { amount: number; date: string; reason: string }
 export type Member = {
   name: string
+  accountEmail?: string
   initialSavings: number
   initialSavingsDate: string
   contributions: SavingsContribution[]
   withdrawals: SavingsWithdrawal[]
+}
+export type AccountRole = 'admin' | 'member'
+export type DatabaseAccount = {
+  email: string
+  name: string
+  role: AccountRole
+  salt: string
+  passwordHash: string
+  createdAt: string
 }
 
 export type DirectoryPermission = 'granted' | 'denied' | 'prompt'
@@ -103,7 +113,42 @@ const getCellNumber = (value: ExcelJS.CellValue, context: string): number => {
   return amount
 }
 
-export const readWorkbookMembers = async (directory: DatabaseDirectoryHandle): Promise<Member[] | null> => {
+const bytesToHex = (bytes: Uint8Array) =>
+  Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+
+const hexToBytes = (hex: string): Uint8Array<ArrayBuffer> => {
+  if (!/^(?:[\da-f]{2})+$/i.test(hex)) throw new Error('Invalid account password data in the Excel database.')
+  return new Uint8Array((hex.match(/.{2}/g) ?? []).map((byte) => Number.parseInt(byte, 16)))
+}
+
+const derivePasswordHash = async (password: string, salt: Uint8Array<ArrayBuffer>) => {
+  const passwordKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits'])
+  const hash = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: 310_000, hash: 'SHA-256' },
+    passwordKey,
+    256,
+  )
+  return bytesToHex(new Uint8Array(hash))
+}
+
+export const createPasswordHash = async (password: string) => {
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  return {
+    salt: bytesToHex(salt),
+    passwordHash: await derivePasswordHash(password, salt),
+  }
+}
+
+export const verifyPassword = async (password: string, account: DatabaseAccount) => {
+  const actualHash = hexToBytes(await derivePasswordHash(password, hexToBytes(account.salt)))
+  const expectedHash = hexToBytes(account.passwordHash)
+  if (actualHash.length !== expectedHash.length) return false
+  return actualHash.reduce((difference, byte, index) => difference | (byte ^ expectedHash[index]), 0) === 0
+}
+
+export const readWorkbookData = async (
+  directory: DatabaseDirectoryHandle,
+): Promise<{ members: Member[]; accounts: DatabaseAccount[] } | null> => {
   const ExcelJS = (await import('exceljs')).default
   let fileHandle: DatabaseFileHandle
   try {
@@ -129,6 +174,7 @@ export const readWorkbookMembers = async (directory: DatabaseDirectoryHandle): P
       initialSavingsDate: getCellDate(row.getCell(3).value),
       contributions: [],
       withdrawals: [],
+      accountEmail: String(row.getCell(4).value ?? '').trim().toLowerCase() || undefined,
     })
   })
 
@@ -159,20 +205,40 @@ export const readWorkbookMembers = async (directory: DatabaseDirectoryHandle): P
     })
   })
 
-  return [...members.values()]
+  const accounts: DatabaseAccount[] = []
+  workbook.getWorksheet('Accounts')?.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return
+    const email = String(row.getCell(1).value ?? '').trim().toLowerCase()
+    const name = String(row.getCell(2).value ?? '').trim()
+    const salt = String(row.getCell(3).value ?? '').trim()
+    const passwordHash = String(row.getCell(4).value ?? '').trim()
+    const createdAt = getCellDate(row.getCell(5).value)
+    const roleValue = String(row.getCell(6).value ?? '').trim().toLowerCase()
+    const role: AccountRole = roleValue === 'admin' ? 'admin' : 'member'
+    if (email && name && salt && passwordHash) {
+      accounts.push({ email, name, role, salt, passwordHash, createdAt })
+    }
+  })
+
+  return { members: [...members.values()], accounts }
 }
 
-export const writeWorkbookMembers = async (directory: DatabaseDirectoryHandle, members: Member[]) => {
+export const writeWorkbookData = async (
+  directory: DatabaseDirectoryHandle,
+  members: Member[],
+  accounts: DatabaseAccount[],
+) => {
   const ExcelJS = (await import('exceljs')).default
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'Funds Organizer'
 
   const membersSheet = workbook.addWorksheet('Members')
-  membersSheet.addRow(['Name', 'Initial Savings', 'Initial Savings Date'])
+  membersSheet.addRow(['Name', 'Initial Savings', 'Initial Savings Date', 'Account Email'])
   members.forEach((member) => membersSheet.addRow([
     member.name,
     member.initialSavings,
     member.initialSavingsDate,
+    member.accountEmail ?? '',
   ]))
 
   const contributionsSheet = workbook.addWorksheet('Contributions')
@@ -187,6 +253,17 @@ export const writeWorkbookMembers = async (directory: DatabaseDirectoryHandle, m
     withdrawalsSheet.addRow([member.name, withdrawal.date, withdrawal.amount, withdrawal.reason])
   }))
 
+  const accountsSheet = workbook.addWorksheet('Accounts')
+  accountsSheet.addRow(['Email', 'Name', 'Salt', 'Password Hash', 'Created At', 'Role'])
+  accounts.forEach((account) => accountsSheet.addRow([
+    account.email,
+    account.name,
+    account.salt,
+    account.passwordHash,
+    account.createdAt,
+    account.role,
+  ]))
+
   const fileHandle = await directory.getFileHandle(DATABASE_FILE_NAME, { create: true })
   const writable = await fileHandle.createWritable()
   try {
@@ -196,4 +273,12 @@ export const writeWorkbookMembers = async (directory: DatabaseDirectoryHandle, m
     await writable.close()
     throw error
   }
+}
+
+export const readWorkbookMembers = async (directory: DatabaseDirectoryHandle) =>
+  (await readWorkbookData(directory))?.members ?? null
+
+export const writeWorkbookMembers = async (directory: DatabaseDirectoryHandle, members: Member[]) => {
+  const existingData = await readWorkbookData(directory)
+  await writeWorkbookData(directory, members, existingData?.accounts ?? [])
 }
