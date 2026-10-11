@@ -432,6 +432,8 @@ function OverviewPage({ totalSavings }: { totalSavings: number }) {
 type SavingsPageProps = {
   members: Member[]
   selectedMember: string
+  isAdmin: boolean
+  overallSavings: number
   onMemberChange: (member: string) => void
   onAddSavings: (memberName: string, amount: number, date: string) => void
   onPullOutSavings: (memberName: string, amount: number, date: string, reason: string) => void
@@ -440,6 +442,8 @@ type SavingsPageProps = {
 function SavingsPage({
   members,
   selectedMember,
+  isAdmin,
+  overallSavings,
   onMemberChange,
   onAddSavings,
   onPullOutSavings,
@@ -570,18 +574,22 @@ function SavingsPage({
           <h2>Growth tracker</h2>
         </div>
         <div className="member-controls">
-          <label className="member-select-label">
-            Member
-            <select
-              value={selectedMember}
-              onChange={(event) => onMemberChange(event.target.value)}
-            >
-              <option value="all">All</option>
-              {members.map((member) => (
-                <option key={member.name} value={member.name}>{member.name}</option>
-              ))}
-            </select>
-          </label>
+          {isAdmin ? (
+            <label className="member-select-label">
+              Member
+              <select
+                value={selectedMember}
+                onChange={(event) => onMemberChange(event.target.value)}
+              >
+                <option value="all">All</option>
+                {members.map((member) => (
+                  <option key={member.name} value={member.name}>{member.name}</option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <span className="member-select-label">Member: {members[0]?.name ?? 'No linked account'}</span>
+          )}
         </div>
       </section>
 
@@ -595,7 +603,7 @@ function SavingsPage({
           {selectedMemberDetails && (
             <div className="total-savings-summary">
               <span>All members total</span>
-              <strong>{formatCurrency(totalSavings)}</strong>
+              <strong>{formatCurrency(overallSavings)}</strong>
             </div>
           )}
         </article>
@@ -621,7 +629,7 @@ function SavingsPage({
               />
             </div>
             <small>{goal.target} target</small>
-            {goal.name === 'Home down payment' && (
+            {isAdmin && goal.name === 'Home down payment' && (
               <div className="member-savings-actions">
                 <form className="add-savings-form" noValidate onSubmit={handleAddSavings}>
                 <label>
@@ -674,7 +682,7 @@ function SavingsPage({
             )}
           </article>
         ))}
-        <article className="panel stat-panel pull-out-card">
+        {isAdmin && <article className="panel stat-panel pull-out-card">
           <div>
             <p className="eyebrow">Withdrawal</p>
             <h3>Pull out savings</h3>
@@ -747,7 +755,7 @@ function SavingsPage({
             </button>
             {withdrawalError && <p className="member-error" role="alert">{withdrawalError}</p>}
           </form>
-        </article>
+        </article>}
       </section>
 
       <section className="panel full-width-panel">
@@ -1061,6 +1069,41 @@ function DataPage({
   )
 }
 
+function AccountPage({ name, email }: { name: string; email: string }) {
+  return (
+    <main className="page-view">
+      <section className="page-header">
+        <div>
+          <p className="eyebrow">My account</p>
+          <h2>Account details</h2>
+        </div>
+      </section>
+      <section className="panel full-width-panel">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Member account</p>
+            <h3>{name}</h3>
+          </div>
+        </div>
+        <div className="stats-grid">
+          <div className="stat-box">
+            <span>Name</span>
+            <strong>{name}</strong>
+          </div>
+          <div className="stat-box">
+            <span>Email</span>
+            <strong>{email}</strong>
+          </div>
+          <div className="stat-box">
+            <span>Role</span>
+            <strong>Member</strong>
+          </div>
+        </div>
+      </section>
+    </main>
+  )
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
   const [isDarkMode, setIsDarkMode] = useState(true)
@@ -1071,6 +1114,7 @@ function App() {
   const [accounts, setAccounts] = useState<DatabaseAccount[]>([])
   const [borrowers, setBorrowers] = useState<Borrower[]>([])
   const [signedInUser, setSignedInUser] = useState('')
+  const [signedInEmail, setSignedInEmail] = useState('')
   const [signedInRole, setSignedInRole] = useState<AccountRole | null>(null)
   const [selectedMember, setSelectedMember] = useState('all')
   const [databaseMessage, setDatabaseMessage] = useState('Loading saved data…')
@@ -1081,8 +1125,11 @@ function App() {
   const initialAccounts = useRef(accounts)
   const initialBorrowers = useRef(borrowers)
   const totalSavings = members.reduce((total, member) => total + getMemberSavings(member), 0)
+  const signedInMember = members.find((member) =>
+    member.accountEmail?.trim().toLowerCase() === signedInEmail.trim().toLowerCase(),
+  )
 
-  useEffect(() => {
+    useEffect(() => {
     document.documentElement.dataset.theme = isDarkMode ? 'dark' : 'light'
   }, [isDarkMode])
 
@@ -1269,6 +1316,7 @@ function App() {
         setBorrowers(savedBorrowers)
         setDatabaseMessage(`Excel database connected: ${directory.name}`)
         setSignedInUser(account.name)
+        setSignedInEmail(account.email)
         setSignedInRole(account.role)
       } else {
         const account = savedAccounts.find((savedAccount) => savedAccount.email === email)
@@ -1279,9 +1327,11 @@ function App() {
         setAccounts(savedAccounts)
         setBorrowers(savedBorrowers)
         setSignedInUser(account.name)
+        setSignedInEmail(account.email)
         setSignedInRole(account.role)
       }
 
+      setActiveTab('overview')
       setLoginMessage('')
       setIsLoginOpen(false)
     } catch (error) {
@@ -1297,6 +1347,7 @@ function App() {
   }
 
   const addSavings = (memberName: string, amount: number, date: string) => {
+    if (signedInRole !== 'admin') return
     setMembers((currentMembers) =>
       currentMembers.map((member) =>
         member.name === memberName
@@ -1307,6 +1358,7 @@ function App() {
   }
 
   const pullOutSavings = (memberName: string, amount: number, date: string, reason: string) => {
+    if (signedInRole !== 'admin') return
     setMembers((currentMembers) =>
       currentMembers.map((member) =>
         member.name === memberName
@@ -1317,16 +1369,37 @@ function App() {
   }
 
   const addBorrower = (borrower: Borrower) => {
+    if (signedInRole !== 'admin') return
     setBorrowers((currentBorrowers) => [...currentBorrowers, borrower])
   }
 
   const renderPage = () => {
+    if (signedInRole !== 'admin') {
+      if (activeTab === 'overview') return <OverviewPage totalSavings={totalSavings} />
+      if (activeTab === 'savings') {
+        return (
+          <SavingsPage
+            members={signedInMember ? [signedInMember] : []}
+            selectedMember={signedInMember?.name ?? ''}
+            isAdmin={false}
+            overallSavings={totalSavings}
+            onMemberChange={() => undefined}
+            onAddSavings={addSavings}
+            onPullOutSavings={pullOutSavings}
+          />
+        )
+      }
+      return <AccountPage name={signedInUser} email={signedInEmail} />
+    }
+
     switch (activeTab) {
       case 'savings':
         return (
           <SavingsPage
             members={members}
             selectedMember={selectedMember}
+            overallSavings={totalSavings}
+            isAdmin
             onMemberChange={setSelectedMember}
             onAddSavings={addSavings}
             onPullOutSavings={pullOutSavings}
@@ -1371,7 +1444,7 @@ function App() {
             </div>
             <div className="topbar-actions">
               <nav className="main-nav" aria-label="Primary navigation">
-                {tabs.map((tab) => (
+                {(signedInRole === 'admin' ? tabs : tabs.slice(0, 2)).map((tab) => (
                   <button
                     key={tab.id}
                     type="button"
@@ -1387,6 +1460,7 @@ function App() {
                 className="login-button"
                 onClick={() => {
                   setSignedInUser('')
+                  setSignedInEmail('')
                   setSignedInRole(null)
                   setLoginMessage('')
                   setIsRegisterMode(false)
@@ -1463,17 +1537,19 @@ function App() {
                     Full name
                     <input type="text" name="name" autoComplete="name" required autoFocus />
                   </label>
-                  <label>
-                    Initial savings (PHP)
-                    <input
-                      type="number"
-                      name="initialSavings"
-                      min="0"
-                      step="any"
-                      defaultValue="0"
-                      required
-                    />
-                  </label>
+                  {accounts.length === 0 && (
+                    <label>
+                      Initial savings (PHP)
+                      <input
+                        type="number"
+                        name="initialSavings"
+                        min="0"
+                        step="any"
+                        defaultValue="0"
+                        required
+                      />
+                    </label>
+                  )}
                   <label>
                     Account role
                     <select value={accounts.length === 0 ? 'admin' : 'member'} disabled>
