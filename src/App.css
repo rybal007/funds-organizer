@@ -1,4 +1,5 @@
 .app-shell {
+  position: relative;
   width: min(1200px, calc(100% - 32px));
   margin: 32px auto;
   padding: 24px;
@@ -9,12 +10,41 @@
   box-shadow: 0 26px 60px rgba(15, 23, 42, 0.35);
 }
 
+.theme-toggle {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.82);
+  color: #facc15;
+  cursor: pointer;
+  font-size: 1.25rem;
+  line-height: 1;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.theme-toggle:hover {
+  background: rgba(51, 65, 85, 0.9);
+}
+
+.theme-toggle:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 3px;
+}
+
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 32px;
+  padding-right: 52px;
 }
 
 .eyebrow {
@@ -332,7 +362,7 @@ p {
   display: flex;
   align-items: end;
   justify-content: space-between;
-  gap: 12px;
+  gap: 6px;
   height: 220px;
   padding-top: 18px;
 }
@@ -350,19 +380,223 @@ p {
 .bar-track {
   display: flex;
   align-items: end;
+  position: relative;
   width: 100%;
   height: 100%;
   padding: 2px;
   border-radius: 16px;
   background: rgba(51, 65, 85, 0.75);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .bar-fill {
+  position: relative;
   width: 100%;
   border-radius: 12px 12px 0 0;
   background: linear-gradient(180deg, #67e8f9, #8b5cf6);
   min-height: 18px;
+}
+
+.bar-fill::after {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  z-index: 2;
+  padding: 5px 8px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 7px;
+  background: #0f172a;
+  color: #f8fafc;
+  content: attr(data-value);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  white-space: nowrap;
+}
+
+.bar-track:hover .bar-fill::after,
+.bar-track:focus-visible .bar-fill::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.bar-track:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 3px;
+}
+
+.chart-bar3d .bar-fill {
+  border-top-right-radius: 8px;
+  box-shadow: 5px 0 0 rgba(8, 145, 178, 0.78), 8px -3px 0 rgba(103, 232, 249, 0.45);
+}
+
+.chart-line,
+.chart-curve {
+  display: block;
+  height: auto;
+  padding: 0;
+}
+
+.chart-plot {
+  position: relative;
+  height: 180px;
+  margin: 4px 0 10px;
+}
+
+.chart-line-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.chart-line-path {
+  fill: none;
+  stroke: #67e8f9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 4px;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-line-dot {
+  fill: #8b5cf6;
+  stroke: #e0f2fe;
+  stroke-width: 3px;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-point {
+  position: absolute;
+  z-index: 1;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #e0f2fe;
+  border-radius: 50%;
+  background: #8b5cf6;
+  cursor: help;
+  transform: translate(-50%, 50%);
+}
+
+.chart-point::after {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  padding: 5px 8px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 7px;
+  background: #0f172a;
+  color: #f8fafc;
+  content: attr(data-value);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  white-space: nowrap;
+}
+
+.chart-point:hover::after,
+.chart-point:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.chart-point:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 3px;
+}
+
+.chart-months {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  text-align: center;
+}
+
+.chart-months span {
+  color: #94a3b8;
+  font-size: 0.8rem;
+}
+
+.chart-style-control {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.chart-style-button,
+.chart-style-menu button {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(15, 23, 42, 0.82);
+  color: #e2e8f0;
+  font: inherit;
+}
+
+.chart-style-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 11px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.chart-style-chevron {
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+}
+
+.chart-style-button:hover,
+.chart-style-menu button:hover {
+  background: rgba(51, 65, 85, 0.9);
+}
+
+.chart-style-button:focus-visible,
+.chart-style-menu button:focus-visible {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+
+.chart-style-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  display: grid;
+  min-width: 140px;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 12px;
+  background: #0f172a;
+  box-shadow: 0 12px 28px rgba(2, 6, 23, 0.35);
+}
+
+.chart-style-menu button {
+  padding: 8px 10px;
+  border-color: transparent;
+  border-radius: 7px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+
+.chart-style-menu button.selected {
+  background: rgba(59, 130, 246, 0.18);
+  color: #f8fafc;
 }
 
 .bar-group span {
@@ -585,6 +819,155 @@ p {
   letter-spacing: -0.04em;
 }
 
+.app-shell[data-theme='light'] {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(100, 116, 139, 0.2);
+  color: #1e293b;
+  box-shadow: 0 26px 60px rgba(30, 41, 59, 0.12);
+}
+
+.app-shell[data-theme='light'] .theme-toggle {
+  background: #fff;
+  border-color: rgba(100, 116, 139, 0.24);
+  color: #334155;
+}
+
+.app-shell[data-theme='light'] .theme-toggle:hover {
+  background: #e2e8f0;
+}
+
+.app-shell[data-theme='light'] .main-nav,
+.app-shell[data-theme='light'] .secondary-button,
+.app-shell[data-theme='light'] .member-select-label select,
+.app-shell[data-theme='light'] .add-member-form input,
+.app-shell[data-theme='light'] .add-savings-form input,
+.app-shell[data-theme='light'] .add-savings-form select,
+.app-shell[data-theme='light'] .pull-out-form input,
+.app-shell[data-theme='light'] .pull-out-form select,
+.app-shell[data-theme='light'] .withdrawal-summary,
+.app-shell[data-theme='light'] .account-card.muted,
+.app-shell[data-theme='light'] .stat-box {
+  background: #f1f5f9;
+  color: #334155;
+  border-color: rgba(100, 116, 139, 0.2);
+}
+
+.app-shell[data-theme='light'] .nav-link,
+.app-shell[data-theme='light'] .member-select-label,
+.app-shell[data-theme='light'] .add-member-form label,
+.app-shell[data-theme='light'] .add-savings-form label,
+.app-shell[data-theme='light'] .pull-out-form label,
+.app-shell[data-theme='light'] .withdrawal-summary,
+.app-shell[data-theme='light'] .account-meta {
+  color: #475569;
+}
+
+.app-shell[data-theme='light'] .nav-link.active {
+  background: rgba(14, 116, 144, 0.12);
+  color: #0f172a;
+}
+
+.app-shell[data-theme='light'] .member-select-label select,
+.app-shell[data-theme='light'] .add-member-form input,
+.app-shell[data-theme='light'] .add-savings-form input,
+.app-shell[data-theme='light'] .add-savings-form select,
+.app-shell[data-theme='light'] .pull-out-form input,
+.app-shell[data-theme='light'] .pull-out-form select {
+  color: #1e293b;
+}
+
+.app-shell[data-theme='light'] .add-member-form,
+.app-shell[data-theme='light'] .summary-card,
+.app-shell[data-theme='light'] .panel {
+  background: linear-gradient(180deg, #fff, #f8fafc);
+  border-color: rgba(100, 116, 139, 0.18);
+}
+
+.app-shell[data-theme='light'] .eyebrow {
+  color: #0e7490;
+}
+
+.app-shell[data-theme='light'] .summary-card p,
+.app-shell[data-theme='light'] .bar-group span,
+.app-shell[data-theme='light'] .chart-months span,
+.app-shell[data-theme='light'] .account-balance small,
+.app-shell[data-theme='light'] .transaction-item small,
+.app-shell[data-theme='light'] .bill-item small,
+.app-shell[data-theme='light'] .goal-item small,
+.app-shell[data-theme='light'] .stat-box span,
+.app-shell[data-theme='light'] .info-row small,
+.app-shell[data-theme='light'] .savings-history-empty,
+.app-shell[data-theme='light'] .withdrawal-summary small {
+  color: #64748b;
+}
+
+.app-shell[data-theme='light'] .chart-line-path {
+  stroke: #0e7490;
+}
+
+.app-shell[data-theme='light'] .chart-line-dot,
+.app-shell[data-theme='light'] .chart-point {
+  fill: #0e7490;
+  border-color: #cffafe;
+}
+
+.app-shell[data-theme='light'] .chart-style-button,
+.app-shell[data-theme='light'] .chart-style-menu {
+  border-color: rgba(100, 116, 139, 0.2);
+  background: #fff;
+  color: #334155;
+}
+
+.app-shell[data-theme='light'] .chart-style-menu button {
+  background: transparent;
+  color: #334155;
+}
+
+.app-shell[data-theme='light'] .chart-style-menu button:hover {
+  background: #e2e8f0;
+}
+
+.app-shell[data-theme='light'] .chart-style-menu button.selected {
+  background: #cffafe;
+  color: #164e63;
+}
+
+.app-shell[data-theme='light'] .meta-pill {
+  background: #ccfbf1;
+  color: #115e59;
+}
+
+.app-shell[data-theme='light'] .bar-track,
+.app-shell[data-theme='light'] .progress-bar {
+  background: #e2e8f0;
+}
+
+.app-shell[data-theme='light'] .account-card.accent {
+  background: linear-gradient(135deg, #e0f2fe, #ecfeff);
+  border-color: rgba(8, 145, 178, 0.2);
+}
+
+.app-shell[data-theme='light'] .transaction-item,
+.app-shell[data-theme='light'] .bill-item {
+  border-color: rgba(100, 116, 139, 0.16);
+}
+
+.app-shell[data-theme='light'] .divider,
+.app-shell[data-theme='light'] .info-row {
+  border-color: rgba(100, 116, 139, 0.16);
+  background-color: rgba(100, 116, 139, 0.16);
+}
+
+.app-shell[data-theme='light'] .total-savings-card {
+  background:
+    radial-gradient(ellipse at top right, rgba(45, 212, 191, 0.16), transparent 65%),
+    linear-gradient(145deg, #ecfeff, #f0fdfa);
+}
+
+.app-shell[data-theme='light'] .total-savings-card .mini-header strong {
+  color: #134e4a;
+}
+
 @media (max-width: 980px) {
   .topbar,
   .page-header {
@@ -628,6 +1011,11 @@ p {
     width: min(100% - 18px, 1200px);
     padding: 16px;
     margin: 18px auto;
+  }
+
+  .topbar {
+    padding-right: 0;
+    padding-top: 42px;
   }
 
   .summary-grid,

@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import './App.css'
 
 type TabKey = 'overview' | 'savings' | 'loans' | 'profits' | 'data'
+type ChartStyle = 'bar' | 'line' | 'curve' | 'bar3d'
 type SavingsContribution = { amount: number; date: string }
 type SavingsWithdrawal = { amount: number; date: string; reason: string }
 type Member = {
@@ -24,12 +25,18 @@ const summaryCards = [
 ]
 
 const spendingTrend = [
-  { month: 'Jan', value: 36 },
-  { month: 'Feb', value: 48 },
-  { month: 'Mar', value: 42 },
-  { month: 'Apr', value: 61 },
-  { month: 'May', value: 58 },
-  { month: 'Jun', value: 73 },
+  { month: 'Jan', value: 3600 },
+  { month: 'Feb', value: 4800 },
+  { month: 'Mar', value: 4200 },
+  { month: 'Apr', value: 6100 },
+  { month: 'May', value: 5800 },
+  { month: 'Jun', value: 7300 },
+  { month: 'Jul', value: 6700 },
+  { month: 'Aug', value: 7800 },
+  { month: 'Sep', value: 6400 },
+  { month: 'Oct', value: 8200 },
+  { month: 'Nov', value: 7500 },
+  { month: 'Dec', value: 9100 },
 ]
 
 const budgetCategories = [
@@ -92,6 +99,13 @@ const tabs: Array<{ id: TabKey; label: string }> = [
   { id: 'data', label: 'Data' },
 ]
 
+const chartStyles: Array<{ value: ChartStyle; label: string }> = [
+  { value: 'bar', label: 'Bars' },
+  { value: 'line', label: 'Line' },
+  { value: 'curve', label: 'Curve' },
+  { value: 'bar3d', label: '3D bars' },
+]
+
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-PH', {
     style: 'currency',
@@ -112,9 +126,23 @@ const formatDate = (date: string) =>
 const currentYear = new Date().getFullYear()
 
 function OverviewPage({ totalSavings }: { totalSavings: number }) {
+  const [chartStyle, setChartStyle] = useState<ChartStyle>('bar')
+  const [isChartStyleMenuOpen, setIsChartStyleMenuOpen] = useState(false)
   const currentBudget = budgetCategories.reduce((sum, item) => sum + item.spent, 0)
   const totalCapacity = budgetCategories.reduce((sum, item) => sum + item.limit, 0)
   const budgetUsage = Math.round((currentBudget / totalCapacity) * 100)
+  const maxMonthlyProfit = Math.max(...spendingTrend.map((bar) => bar.value))
+  const chartPoints = spendingTrend.map((bar, index) => ({
+    x: 20 + (index / (spendingTrend.length - 1)) * 1060,
+    y: 90 - (bar.value / maxMonthlyProfit) * 76,
+  }))
+  const chartPath = chartPoints.slice(1).reduce((path, point, index) => {
+    const previous = chartPoints[index]
+    if (chartStyle === 'line') return `${path} L ${point.x} ${point.y}`
+    const controlOffset = (point.x - previous.x) / 3
+    return `${path} C ${previous.x + controlOffset} ${previous.y} ${point.x - controlOffset} ${point.y} ${point.x} ${point.y}`
+  }, `M ${chartPoints[0].x} ${chartPoints[0].y}`)
+  const selectedChartStyle = chartStyles.find((style) => style.value === chartStyle)!
 
   return (
     <main className="dashboard">
@@ -138,15 +166,91 @@ function OverviewPage({ totalSavings }: { totalSavings: number }) {
             <button type="button" className="secondary-button">{currentYear}</button>
           </div>
 
-          <div className="chart" aria-label="Monthly spending trend">
-            {spendingTrend.map((bar) => (
-              <div key={bar.month} className="bar-group">
-                <div className="bar-track">
-                  <div className="bar-fill" style={{ height: `${bar.value}%` }} />
+          <div className={`chart chart-${chartStyle}`} aria-label="Monthly profit trend">
+            {chartStyle === 'bar' || chartStyle === 'bar3d' ? (
+              spendingTrend.map((bar) => (
+                <div key={bar.month} className="bar-group">
+                  <div
+                    className="bar-track"
+                    role="img"
+                    aria-label={`${bar.month}: ${formatCurrency(bar.value)} profit`}
+                    tabIndex={0}
+                  >
+                    <div
+                      className="bar-fill"
+                      data-value={formatCurrency(bar.value)}
+                      style={{ height: `${(bar.value / maxMonthlyProfit) * 100}%` }}
+                    />
+                  </div>
+                  <span>{bar.month}</span>
                 </div>
-                <span>{bar.month}</span>
+              ))
+            ) : (
+              <>
+                <div className="chart-plot">
+                  <svg className="chart-line-svg" viewBox="0 0 1100 100" preserveAspectRatio="none" aria-hidden="true">
+                    <path className="chart-line-path" d={chartPath} />
+                    {chartPoints.map((point, index) => (
+                      <circle key={spendingTrend[index].month} className="chart-line-dot" cx={point.x} cy={point.y} r="5" />
+                    ))}
+                  </svg>
+                  {spendingTrend.map((bar, index) => (
+                    <div
+                      key={bar.month}
+                      className="chart-point"
+                      role="img"
+                      aria-label={`${bar.month}: ${formatCurrency(bar.value)} profit`}
+                      data-value={formatCurrency(bar.value)}
+                      style={{
+                        left: `${(index / (spendingTrend.length - 1)) * 100}%`,
+                        bottom: `${5 + (bar.value / maxMonthlyProfit) * 80}%`,
+                      }}
+                      tabIndex={0}
+                    />
+                  ))}
+                </div>
+                <div className="chart-months" aria-hidden="true">
+                  {spendingTrend.map((bar) => <span key={bar.month}>{bar.month}</span>)}
+                </div>
+              </>
+            )}
+          </div>
+
+          <div
+            className="chart-style-control"
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setIsChartStyleMenuOpen(false)
+            }}
+          >
+            <button
+              type="button"
+              className="chart-style-button"
+              aria-haspopup="true"
+              aria-expanded={isChartStyleMenuOpen}
+              aria-label={`Graph style: ${selectedChartStyle.label}`}
+              onClick={() => setIsChartStyleMenuOpen((isOpen) => !isOpen)}
+            >
+              <span>Graph style: {selectedChartStyle.label}</span>
+              <span className="chart-style-chevron" aria-hidden="true" />
+            </button>
+            {isChartStyleMenuOpen && (
+              <div className="chart-style-menu" role="group" aria-label="Graph style">
+                {chartStyles.map((style) => (
+                  <button
+                    key={style.value}
+                    type="button"
+                    className={chartStyle === style.value ? 'selected' : ''}
+                    aria-pressed={chartStyle === style.value}
+                    onClick={() => {
+                      setChartStyle(style.value)
+                      setIsChartStyleMenuOpen(false)
+                    }}
+                  >
+                    {style.label}
+                  </button>
+                ))}
               </div>
-            ))}
+            )}
           </div>
         </article>
 
@@ -889,9 +993,14 @@ function DataPage() {
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('overview')
+  const [isDarkMode, setIsDarkMode] = useState(true)
   const [members, setMembers] = useState<Member[]>([])
   const [selectedMember, setSelectedMember] = useState('all')
   const totalSavings = members.reduce((total, member) => total + getMemberSavings(member), 0)
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = isDarkMode ? 'dark' : 'light'
+  }, [isDarkMode])
 
   const addMember = (member: Member) => {
     setMembers((currentMembers) => [...currentMembers, member])
@@ -944,7 +1053,16 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-theme={isDarkMode ? 'dark' : 'light'}>
+      <button
+        type="button"
+        className="theme-toggle"
+        aria-label={`Switch to ${isDarkMode ? 'light' : 'dark'} mode`}
+        title={`Switch to ${isDarkMode ? 'light' : 'dark'} mode`}
+        onClick={() => setIsDarkMode((currentMode) => !currentMode)}
+      >
+        <span aria-hidden="true">{isDarkMode ? '☼' : '☾'}</span>
+      </button>
       <header className="topbar">
         <div>
           <p className="eyebrow">Welcome back</p>
