@@ -932,9 +932,10 @@ function LoansPage({
                     Add interest
                   </button>
                 </div>
-                <span>
-                  Loan: {formatCurrency(borrower.loanAmount)} · Payday interest: {formatCurrency(borrower.paydayInterest)}
-                </span>
+                <div className="borrower-metrics">
+                  <span><strong>Principal:</strong> {formatCurrency(borrower.loanAmount)}</span>
+                  <span><strong>Interest:</strong> {formatCurrency(borrower.paydayInterest)}</span>
+                </div>
                 <div className="loan-transactions">
                   <small>Loan transactions</small>
                   {borrower.transactions && borrower.transactions.length > 0 ? (
