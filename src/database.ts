@@ -19,6 +19,13 @@ export type DatabaseAccount = {
   passwordHash: string
   createdAt: string
 }
+export type LoanTransaction = {
+  id: string
+  type: 'loan' | 'interest'
+  amount: number
+  date: string
+}
+
 export type Borrower = {
   id: string
   name: string
@@ -26,6 +33,7 @@ export type Borrower = {
   loanAmount: number
   paydayInterest: number
   createdAt: string
+  transactions: LoanTransaction[]
 }
 
 export type DirectoryPermission = 'granted' | 'denied' | 'prompt'
@@ -234,13 +242,37 @@ export const readWorkbookData = async (
     const id = String(row.getCell(1).value ?? '').trim()
     const name = String(row.getCell(2).value ?? '').trim()
     if (!id || !name) return
+    const loanAmount = Number(row.getCell(6).value) || 0
+    const transactionsValue = String(row.getCell(7).value ?? '').trim()
+    let transactions: LoanTransaction[] = []
+    if (transactionsValue) {
+      try {
+        const parsedTransactions = JSON.parse(transactionsValue)
+        if (Array.isArray(parsedTransactions)) {
+          transactions = parsedTransactions.filter((transaction): transaction is LoanTransaction => Boolean(transaction)
+            && typeof transaction.id === 'string'
+            && (transaction.type === 'loan' || transaction.type === 'interest')
+            && Number.isFinite(Number(transaction.amount))
+            && typeof transaction.date === 'string')
+            .map((transaction) => ({
+              id: String(transaction.id),
+              type: transaction.type === 'interest' ? 'interest' : 'loan',
+              amount: Number(transaction.amount),
+              date: String(transaction.date),
+            }))
+        }
+      } catch {
+        transactions = []
+      }
+    }
     borrowers.push({
       id,
       name,
       email: String(row.getCell(3).value ?? '').trim(),
-      loanAmount: Number(row.getCell(6).value) || 0,
-      paydayInterest: (Number(row.getCell(6).value) || 0) * 0.03,
+      loanAmount,
+      paydayInterest: loanAmount * 0.03,
       createdAt: getCellDate(row.getCell(5).value),
+      transactions,
     })
   })
 
@@ -290,7 +322,7 @@ export const writeWorkbookData = async (
   ]))
 
   const borrowersSheet = workbook.addWorksheet('Borrowers')
-  borrowersSheet.addRow(['ID', 'Name', 'Email', 'Payday Interest (PHP)', 'Created At', 'Loan Amount (PHP)'])
+  borrowersSheet.addRow(['ID', 'Name', 'Email', 'Payday Interest (PHP)', 'Created At', 'Loan Amount (PHP)', 'Loan Transactions (JSON)'])
   borrowers.forEach((borrower) => borrowersSheet.addRow([
     borrower.id,
     borrower.name,
@@ -298,6 +330,7 @@ export const writeWorkbookData = async (
     borrower.loanAmount * 0.03,
     borrower.createdAt,
     borrower.loanAmount,
+    JSON.stringify(borrower.transactions ?? []),
   ]))
 
   const fileHandle = await directory.getFileHandle(DATABASE_FILE_NAME, { create: true })

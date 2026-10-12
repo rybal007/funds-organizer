@@ -805,7 +805,15 @@ function SavingsPage({
   )
 }
 
-function LoansPage({ borrowers, onAddBorrower }: { borrowers: Borrower[]; onAddBorrower: (borrower: Borrower) => void }) {
+function LoansPage({
+  borrowers,
+  onAddBorrower,
+  onAddBorrowerInterest,
+}: {
+  borrowers: Borrower[]
+  onAddBorrower: (borrower: Borrower) => void
+  onAddBorrowerInterest: (borrowerId: string) => void
+}) {
   const [isAddingBorrower, setIsAddingBorrower] = useState(false)
   const [borrowerName, setBorrowerName] = useState('')
   const [borrowerLoanAmount, setBorrowerLoanAmount] = useState('')
@@ -835,6 +843,12 @@ function LoansPage({ borrowers, onAddBorrower }: { borrowers: Borrower[]; onAddB
       loanAmount,
       paydayInterest: loanAmount * 0.03,
       createdAt: new Date().toISOString(),
+      transactions: [{
+        id: crypto.randomUUID(),
+        type: 'loan',
+        amount: loanAmount,
+        date: getLocalDate(),
+      }],
     })
     setBorrowerName('')
     setBorrowerLoanAmount('')
@@ -908,10 +922,37 @@ function LoansPage({ borrowers, onAddBorrower }: { borrowers: Borrower[]; onAddB
           <ul className="borrower-list">
             {borrowers.map((borrower) => (
               <li key={borrower.id} className="borrower-item">
-                <strong>{borrower.name}</strong>
+                <div className="borrower-item-header">
+                  <strong>{borrower.name}</strong>
+                  <button
+                    type="button"
+                    className="secondary-button borrower-interest-button"
+                    onClick={() => onAddBorrowerInterest(borrower.id)}
+                  >
+                    Add interest
+                  </button>
+                </div>
                 <span>
-                  Loan: {formatCurrency(borrower.loanAmount)} · Payday interest: {formatCurrency(borrower.loanAmount * 0.03)}
+                  Loan: {formatCurrency(borrower.loanAmount)} · Payday interest: {formatCurrency(borrower.paydayInterest)}
                 </span>
+                <div className="loan-transactions">
+                  <small>Loan transactions</small>
+                  {borrower.transactions && borrower.transactions.length > 0 ? (
+                    <ul className="loan-transaction-list">
+                      {borrower.transactions.map((transaction) => (
+                        <li key={transaction.id} className="loan-transaction-item">
+                          <span className={transaction.type === 'interest' ? 'transaction-type interest' : 'transaction-type loan'}>
+                            {transaction.type === 'interest' ? 'Interest' : 'Loan'}
+                          </span>
+                          <strong>{formatCurrency(transaction.amount)}</strong>
+                          <time>{formatDate(transaction.date)}</time>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="loan-transactions-empty">No loan transactions yet.</p>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -1394,6 +1435,27 @@ function App() {
     setBorrowers((currentBorrowers) => [...currentBorrowers, borrower])
   }
 
+  const addBorrowerInterest = (borrowerId: string) => {
+    if (signedInRole !== 'admin') return
+    setBorrowers((currentBorrowers) => currentBorrowers.map((borrower) => {
+      if (borrower.id !== borrowerId) return borrower
+      const nextLoanAmount = Number((borrower.loanAmount + borrower.paydayInterest).toFixed(2))
+      const nextPaydayInterest = Number((nextLoanAmount * 0.03).toFixed(2))
+      const nextTransaction = {
+        id: crypto.randomUUID(),
+        type: 'interest' as const,
+        amount: borrower.paydayInterest,
+        date: getLocalDate(),
+      }
+      return {
+        ...borrower,
+        loanAmount: nextLoanAmount,
+        paydayInterest: nextPaydayInterest,
+        transactions: [...(borrower.transactions ?? []), nextTransaction],
+      }
+    }))
+  }
+
   const renderPage = () => {
     if (signedInRole !== 'admin') {
       if (activeTab === 'overview') return <OverviewPage totalSavings={totalSavings} />
@@ -1429,7 +1491,13 @@ function App() {
           />
         )
       case 'loans':
-        return <LoansPage borrowers={borrowers} onAddBorrower={addBorrower} />
+        return (
+          <LoansPage
+            borrowers={borrowers}
+            onAddBorrower={addBorrower}
+            onAddBorrowerInterest={addBorrowerInterest}
+          />
+        )
       case 'profits':
         return <ProfitsPage />
       case 'data':
