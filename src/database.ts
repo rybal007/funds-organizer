@@ -21,7 +21,7 @@ export type DatabaseAccount = {
 }
 export type LoanTransaction = {
   id: string
-  type: 'loan' | 'interest'
+  type: 'loan' | 'interest' | 'interest-payment'
   amount: number
   date: string
 }
@@ -243,6 +243,15 @@ export const readWorkbookData = async (
     const name = String(row.getCell(2).value ?? '').trim()
     if (!id || !name) return
     const loanAmount = Number(row.getCell(6).value) || 0
+    const paydayInterestValue = row.getCell(4).value
+    const savedPaydayInterest = Number(paydayInterestValue)
+    const paydayInterest = paydayInterestValue === null
+      || paydayInterestValue === undefined
+      || paydayInterestValue === ''
+      || !Number.isFinite(savedPaydayInterest)
+      || savedPaydayInterest < 0
+      ? loanAmount * 0.03
+      : savedPaydayInterest
     const transactionsValue = String(row.getCell(7).value ?? '').trim()
     let transactions: LoanTransaction[] = []
     if (transactionsValue) {
@@ -251,12 +260,12 @@ export const readWorkbookData = async (
         if (Array.isArray(parsedTransactions)) {
           transactions = parsedTransactions.filter((transaction): transaction is LoanTransaction => Boolean(transaction)
             && typeof transaction.id === 'string'
-            && (transaction.type === 'loan' || transaction.type === 'interest')
+            && (transaction.type === 'loan' || transaction.type === 'interest' || transaction.type === 'interest-payment')
             && Number.isFinite(Number(transaction.amount))
             && typeof transaction.date === 'string')
             .map((transaction) => ({
               id: String(transaction.id),
-              type: transaction.type === 'interest' ? 'interest' : 'loan',
+              type: transaction.type === 'interest' || transaction.type === 'interest-payment' ? transaction.type : 'loan',
               amount: Number(transaction.amount),
               date: String(transaction.date),
             }))
@@ -270,7 +279,7 @@ export const readWorkbookData = async (
       name,
       email: String(row.getCell(3).value ?? '').trim(),
       loanAmount,
-      paydayInterest: loanAmount * 0.03,
+      paydayInterest,
       createdAt: getCellDate(row.getCell(5).value),
       transactions,
     })
@@ -327,7 +336,7 @@ export const writeWorkbookData = async (
     borrower.id,
     borrower.name,
     borrower.email ?? '',
-    borrower.loanAmount * 0.03,
+    borrower.paydayInterest,
     borrower.createdAt,
     borrower.loanAmount,
     JSON.stringify(borrower.transactions ?? []),

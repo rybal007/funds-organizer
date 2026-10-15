@@ -367,12 +367,40 @@ p {
   gap: 16px;
 }
 
+.loans-page-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+}
+
 .page-header h2 {
   font-size: clamp(1.9rem, 2vw, 2.7rem);
   letter-spacing: -0.05em;
 }
 
+.loans-title {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  align-items: end;
+  column-gap: 16px;
+}
+
+.loans-title .eyebrow {
+  grid-column: 1 / -1;
+}
+
+.loans-current-date {
+  justify-self: center;
+  color: #67e8f9;
+  font-size: 2.125rem;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
 .loans-actions {
+  grid-column: 3;
+  justify-self: end;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -421,8 +449,8 @@ p {
 
 .borrower-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
-  gap: 10px 24px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
   padding: 0;
   margin: 0;
   list-style: none;
@@ -432,8 +460,8 @@ p {
   display: grid;
   gap: 8px;
   min-width: 0;
-  padding: 12px 0;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.32);
 }
 
 .borrower-item-header {
@@ -443,10 +471,52 @@ p {
   gap: 12px;
 }
 
+.borrower-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .borrower-interest-button {
   padding: 0.5rem 0.8rem;
   font-size: 0.78rem;
   white-space: nowrap;
+}
+
+.interest-payment-form {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(15, 23, 42, 0.32);
+}
+
+.interest-payment-form label {
+  display: flex;
+  flex: 1 1 220px;
+  flex-direction: column;
+  gap: 6px;
+  color: #cbd5e1;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.interest-payment-form input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.9);
+  color: #e2e8f0;
+  font: inherit;
+}
+
+.interest-payment-form .member-error {
+  flex-basis: 100%;
+  margin: 0;
 }
 
 .loan-transactions {
@@ -501,6 +571,11 @@ p {
 .transaction-type.interest {
   background: rgba(34, 197, 94, 0.18);
   color: #bbf7d0;
+}
+
+.transaction-type.interest-payment {
+  background: rgba(244, 63, 94, 0.16);
+  color: #fda4af;
 }
 
 .loan-transactions-empty {
@@ -1471,6 +1546,20 @@ p {
   .page-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .loans-page-header {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .loans-current-date {
+    justify-self: center;
+  }
+
+  .loans-actions {
+    grid-column: 1;
+    justify-self: start;
   }
 
   .member-controls {

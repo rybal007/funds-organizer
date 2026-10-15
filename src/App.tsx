@@ -809,15 +809,20 @@ function LoansPage({
   borrowers,
   onAddBorrower,
   onAddBorrowerInterest,
+  onPayBorrowerInterest,
 }: {
   borrowers: Borrower[]
   onAddBorrower: (borrower: Borrower) => void
   onAddBorrowerInterest: (borrowerId: string) => void
+  onPayBorrowerInterest: (borrowerId: string, amount: number) => void
 }) {
   const [isAddingBorrower, setIsAddingBorrower] = useState(false)
   const [borrowerName, setBorrowerName] = useState('')
   const [borrowerLoanAmount, setBorrowerLoanAmount] = useState('')
   const [borrowerError, setBorrowerError] = useState('')
+  const [payingBorrowerId, setPayingBorrowerId] = useState<string | null>(null)
+  const [interestPaymentAmount, setInterestPaymentAmount] = useState('')
+  const [interestPaymentError, setInterestPaymentError] = useState('')
   const borrowerLoanValue = Number(borrowerLoanAmount)
   const paydayInterest = Number.isFinite(borrowerLoanValue) && borrowerLoanValue > 0
     ? borrowerLoanValue * 0.03
@@ -856,13 +861,37 @@ function LoansPage({
     setIsAddingBorrower(false)
   }
 
+  const handlePayBorrowerInterest = (event: FormEvent<HTMLFormElement>, borrower: Borrower) => {
+    event.preventDefault()
+    const amount = Number(interestPaymentAmount)
+    if (interestPaymentAmount === '' || !Number.isFinite(amount) || amount <= 0) {
+      setInterestPaymentError('Enter an amount greater than zero.')
+      return
+    }
+    const roundedAmount = Number(amount.toFixed(2))
+    if (roundedAmount <= 0) {
+      setInterestPaymentError('Enter an amount of at least 0.01.')
+      return
+    }
+    if (roundedAmount > borrower.paydayInterest) {
+      setInterestPaymentError('Payment cannot exceed the current interest due.')
+      return
+    }
+
+    onPayBorrowerInterest(borrower.id, roundedAmount)
+    setPayingBorrowerId(null)
+    setInterestPaymentAmount('')
+    setInterestPaymentError('')
+  }
+
   return (
     <main className="page-view">
-      <section className="page-header">
-        <div>
+      <section className="page-header loans-page-header">
+        <div className="loans-title">
           <p className="eyebrow">Loans</p>
           <h2>LOANS</h2>
         </div>
+        <time className="loans-current-date" dateTime={getLocalDate()}>{formatDate(getLocalDate())}</time>
         <div className="loans-actions">
           <button type="button" className="secondary-button" onClick={() => setIsAddingBorrower((open) => !open)}>
             {isAddingBorrower ? 'Cancel' : 'Add borrower'}
@@ -924,28 +953,78 @@ function LoansPage({
               <li key={borrower.id} className="borrower-item">
                 <div className="borrower-item-header">
                   <strong>{borrower.name}</strong>
-                  <button
-                    type="button"
-                    className="secondary-button borrower-interest-button"
-                    onClick={() => onAddBorrowerInterest(borrower.id)}
-                  >
-                    Add interest
-                  </button>
+                  <div className="borrower-actions">
+                    <button
+                      type="button"
+                      className="secondary-button borrower-interest-button"
+                      onClick={() => onAddBorrowerInterest(borrower.id)}
+                    >
+                      Add interest
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button borrower-interest-button"
+                      disabled={borrower.paydayInterest <= 0}
+                      onClick={() => {
+                        setPayingBorrowerId((currentId) => currentId === borrower.id ? null : borrower.id)
+                        setInterestPaymentAmount('')
+                        setInterestPaymentError('')
+                      }}
+                    >
+                      Pay interest
+                    </button>
+                  </div>
                 </div>
                 <div className="borrower-metrics">
                   <span><strong>Principal:</strong> {formatCurrency(borrower.loanAmount)}</span>
                   <span><strong>Interest:</strong> {formatCurrency(borrower.paydayInterest)}</span>
                 </div>
+                {payingBorrowerId === borrower.id && (
+                  <form
+                    className="interest-payment-form"
+                    noValidate
+                    onSubmit={(event) => handlePayBorrowerInterest(event, borrower)}
+                  >
+                    <label>
+                      Payment amount (up to {formatCurrency(borrower.paydayInterest)})
+                      <input
+                        type="number"
+                        min="0.01"
+                        max={borrower.paydayInterest}
+                        step="any"
+                        required
+                        value={interestPaymentAmount}
+                        onChange={(event) => {
+                          setInterestPaymentAmount(event.target.value)
+                          setInterestPaymentError('')
+                        }}
+                        placeholder="0"
+                      />
+                    </label>
+                    <button type="submit" className="primary-button">Record payment</button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => {
+                        setPayingBorrowerId(null)
+                        setInterestPaymentError('')
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    {interestPaymentError && <p className="member-error" role="alert">{interestPaymentError}</p>}
+                  </form>
+                )}
                 <div className="loan-transactions">
                   <small>Loan transactions</small>
                   {borrower.transactions && borrower.transactions.length > 0 ? (
                     <ul className="loan-transaction-list">
                       {borrower.transactions.map((transaction) => (
                         <li key={transaction.id} className="loan-transaction-item">
-                          <span className={transaction.type === 'interest' ? 'transaction-type interest' : 'transaction-type loan'}>
-                            {transaction.type === 'interest' ? 'Interest' : 'Loan'}
+                          <span className={`transaction-type ${transaction.type}`}>
+                            {transaction.type === 'interest-payment' ? 'Interest paid' : transaction.type === 'interest' ? 'Interest' : 'Loan'}
                           </span>
-                          <strong>{formatCurrency(transaction.amount)}</strong>
+                          <strong>{transaction.type === 'interest-payment' ? '-' : ''}{formatCurrency(transaction.amount)}</strong>
                           <time>{formatDate(transaction.date)}</time>
                         </li>
                       ))}
@@ -1440,18 +1519,36 @@ function App() {
     if (signedInRole !== 'admin') return
     setBorrowers((currentBorrowers) => currentBorrowers.map((borrower) => {
       if (borrower.id !== borrowerId) return borrower
-      const nextLoanAmount = Number((borrower.loanAmount + borrower.paydayInterest).toFixed(2))
-      const nextPaydayInterest = Number((nextLoanAmount * 0.03).toFixed(2))
+      const accruedInterest = Number((borrower.loanAmount * 0.03).toFixed(2))
+      const nextPaydayInterest = Number((borrower.paydayInterest + accruedInterest).toFixed(2))
       const nextTransaction = {
         id: crypto.randomUUID(),
         type: 'interest' as const,
-        amount: borrower.paydayInterest,
+        amount: accruedInterest,
         date: getLocalDate(),
       }
       return {
         ...borrower,
-        loanAmount: nextLoanAmount,
         paydayInterest: nextPaydayInterest,
+        transactions: [...(borrower.transactions ?? []), nextTransaction],
+      }
+    }))
+  }
+
+  const payBorrowerInterest = (borrowerId: string, amount: number) => {
+    if (signedInRole !== 'admin' || !Number.isFinite(amount) || amount <= 0) return
+    setBorrowers((currentBorrowers) => currentBorrowers.map((borrower) => {
+      if (borrower.id !== borrowerId || amount > borrower.paydayInterest) return borrower
+      const remainingInterest = Number((borrower.paydayInterest - amount).toFixed(2))
+      const nextTransaction = {
+        id: crypto.randomUUID(),
+        type: 'interest-payment' as const,
+        amount,
+        date: getLocalDate(),
+      }
+      return {
+        ...borrower,
+        paydayInterest: Math.max(0, remainingInterest),
         transactions: [...(borrower.transactions ?? []), nextTransaction],
       }
     }))
@@ -1497,6 +1594,7 @@ function App() {
             borrowers={borrowers}
             onAddBorrower={addBorrower}
             onAddBorrowerInterest={addBorrowerInterest}
+            onPayBorrowerInterest={payBorrowerInterest}
           />
         )
       case 'profits':
